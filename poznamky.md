@@ -10,7 +10,7 @@ je dočasný, po smazání TEMP znovu stáhnout z GitHubu).
 ## Build / upload (od FW 0.4.0: ESP-IDF 6.1)
 
 - ESP-IDF 6.1 v `C:\Espressif` (instalace `eim install -i v6.1 -t esp32`),
-  aktivace `C:\Espressif	ools\Microsoft.v6.1.PowerShell_profile.ps1`
+  aktivace `C:\Espressif\tools\Microsoft.v6.1.PowerShell_profile.ps1`
   (dělá ji `tools\build.ps1` sám).
 - Build: `tools\build.ps1`, release `-Release`, nahrání `-Flash` (COM10,
   přímo přes USB), monitor `-Monitor` (`idf.py monitor --no-reset` — reset
