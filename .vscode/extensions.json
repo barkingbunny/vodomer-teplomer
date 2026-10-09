@@ -1,0 +1,11 @@
+{
+    // Build pres ESP-IDF 6.1 (tools/build.ps1), PlatformIO uz se nepouziva.
+    "recommendations": [
+        "ms-vscode.cpptools",
+        "espressif.esp-idf-extension"
+    ],
+    "unwantedRecommendations": [
+        "platformio.platformio-ide",
+        "pioarduino.pioarduino-ide"
+    ]
+}

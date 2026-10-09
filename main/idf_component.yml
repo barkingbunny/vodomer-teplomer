@@ -1,0 +1,8 @@
+dependencies:
+  idf: ">=6.1"
+  # Displej, tlacitka, IP5306 (stejne API jako drive v Arduinu).
+  m5stack/m5unified: "^0.2.25"
+  # 1-Wire v HW pres RMT (timing nezavisi na prerusenich / Wi-Fi).
+  espressif/onewire_bus: "^1.0.0"
+  # 30denni buffer vzorku ve flash (oddil "storage").
+  joltwallet/littlefs: "^1.14.0"

@@ -1,0 +1,9 @@
+# Stazene komponenty (junction do %LOCALAPPDATA%\idf-build, viz tools/build.ps1)
+managed_components/
+# Build, sdkconfig a klice jsou mimo projekt (%LOCALAPPDATA%\idf-build)
+build/
+sdkconfig
+sdkconfig.old
+# IDE
+.vscode/.browse.c_cpp.db*
+.vscode/ipch/

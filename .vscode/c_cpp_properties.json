@@ -1,0 +1,13 @@
+{
+    // IntelliSense z compile_commands.json v build adresari (mimo Google Drive,
+    // vznikne po prvnim tools\build.ps1).
+    "configurations": [
+        {
+            "name": "ESP-IDF (debug)",
+            "compileCommands": "${env:LOCALAPPDATA}/idf-build/vodomer-teplomer/debug/compile_commands.json",
+            "cStandard": "gnu17",
+            "cppStandard": "gnu++2b"
+        }
+    ],
+    "version": 4
+}

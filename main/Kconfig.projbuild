@@ -1,0 +1,10 @@
+menu "Vodomer-teplomer"
+
+config VT_DEBUG
+    bool "Debug log na seriovou linku"
+    default y
+    help
+        Log [boot]/[ds]/[sleep]... na UART0 (115200). V release (sdkconfig.release)
+        vypnuto - kratsi probuzeni.
+
+endmenu
