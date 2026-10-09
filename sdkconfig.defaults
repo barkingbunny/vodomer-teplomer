@@ -1,6 +1,8 @@
 # Vodomer-teplomer: M5Stack Basic (ESP32 rev 1.0, 4 MB flash, bez PSRAM).
 CONFIG_IDF_TARGET="esp32"
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+# 80 MHz DIO (jako PlatformIO board m5stack-core-esp32) - rychlejsi boot a cteni flash.
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 

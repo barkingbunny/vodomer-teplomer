@@ -290,18 +290,13 @@ extern "C" void app_main() {
     bool woke_button = causes & (1UL << ESP_SLEEP_WAKEUP_EXT0);
     esp_reset_reason_t rst = esp_reset_reason();
 
-    auto cfg = M5.config();
-    cfg.clear_display = false;  // displej resit az podle duvodu probuzeni
-    cfg.internal_imu = false;
-    cfg.led_brightness = 0;  // SK6812 nechat tmave
-    cfg.internal_mic = false;
-    cfg.internal_spk = false;  // repro nepouzivame vubec
-    M5.begin(cfg);
-    powerInit();
-    timebaseInit();
-
     // Drzene tlacitko pri startu: BtnC = diagnostika pull-upu, BtnB = portal.
-    if (gpio_get_level(PIN_BTN_C) == 0) diagRun();
+    // Cte se pred M5.begin() - piny nejdriv nastavit jako vstup (po resetu
+    // maji vypnuty vstupni buffer a cetly by 0 = "stisknuto"). Pull-upy
+    // tlacitek jsou na desce.
+    gpio_set_direction(PIN_BTN_B, GPIO_MODE_INPUT);
+    gpio_set_direction(PIN_BTN_C, GPIO_MODE_INPUT);
+    bool btn_diag = gpio_get_level(PIN_BTN_C) == 0;
     bool btn_portal = gpio_get_level(PIN_BTN_B) == 0;
 
     bool valid = rtcLoad(state);
@@ -309,12 +304,24 @@ extern "C" void app_main() {
     bool by_button = !cold && woke_button;
     bool power_on = cold && rst == ESP_RST_POWERON;
 
-    // Displej se rozsviti jen po tlacitku a po zapnuti napajeni - timer wake
-    // ho jen uspi (M5.begin ho inicializuje vzdy).
-    if (!(by_button || power_on)) {
-        M5.Display.setBrightness(0);
-        M5.Display.sleep();
+    // M5.begin() (LCD, tlacitka, IP5306) jen kdyz bude displej potreba:
+    // inicializace LCD v M5GFX ceka pevnych 120 ms po SLPOUT, coz byla vetsina
+    // doby bdeni pri probuzeni casovacem. Bez M5.begin() zustane LCD ve spanku
+    // z minula (SLPIN v displayOff) a IP5306 se obslouzi primo pres I2C (power.cpp).
+    bool need_ui = by_button || power_on || btn_portal || btn_diag;
+    if (need_ui) {
+        auto cfg = M5.config();
+        cfg.clear_display = false;  // kreslit az s hotovou obrazovkou
+        cfg.internal_imu = false;
+        cfg.led_brightness = 0;  // SK6812 nechat tmave
+        cfg.internal_mic = false;
+        cfg.internal_spk = false;  // repro nepouzivame vubec
+        M5.begin(cfg);
+        M5.Display.setBrightness(0);  // podsviceni drzi hold, jas az ve wake()
     }
+    powerInit();
+    timebaseInit();
+    if (btn_diag) diagRun();
 
     if (cold) {
         coldStart(uint8_t(rst));

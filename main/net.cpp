@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <atomic>
 
+#include "driver/gpio.h"
 #include "esp_event.h"
 #include "esp_mac.h"
 #include "esp_netif.h"
@@ -107,6 +108,10 @@ bool sntpQuery(const char *host, uint32_t timeout_ms, int64_t &unix_us, uint64_t
 bool netInit() {
     static bool done = false;
     if (done) return true;
+    // GPIO15 (data SK6812 na M5GO/Fire) v LOW - plovouci rusi Wi-Fi (dela to
+    // i M5.begin(), ktery se na probuzenich bez displeje nevola).
+    gpio_set_direction(GPIO_NUM_15, GPIO_MODE_OUTPUT);
+    gpio_set_level(GPIO_NUM_15, 0);
     if (esp_netif_init() != ESP_OK) return false;
     esp_err_t err = esp_event_loop_create_default();
     if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) return false;

@@ -18,11 +18,19 @@ namespace {
 constexpr uint8_t IP5306_REG_SYS_CTL0 = 0x00;
 constexpr uint8_t IP5306_BOOST_OUT_BIT = 0x02;
 
+// Vlastni instance nad vnitrni I2C (Basic: GPIO21/22, port 0) - IP5306 tak
+// jde cist i bez M5.begin(), ktery na probuzenich bez displeje nevolame
+// (jeho inicializace LCD ceka 120 ms, viz main.cpp). Vychozi sbernice je
+// globalni m5::In_I2C - NE M5.In_I2C: to je reference nastavovana az
+// konstruktorem objektu M5 a poradi inicializace globalu neni zarucene
+// (= nulovy ukazatel a pad hned po startu).
+m5::IP5306_Class ip5306;
+
 bool ip5306KeepOn() {
-    uint8_t v = M5.Power.Ip5306.readRegister8(IP5306_REG_SYS_CTL0);
+    uint8_t v = ip5306.readRegister8(IP5306_REG_SYS_CTL0);
     if (v & IP5306_BOOST_OUT_BIT) return true;
-    return M5.Power.Ip5306.writeRegister8(IP5306_REG_SYS_CTL0, v | IP5306_BOOST_OUT_BIT) &&
-           (M5.Power.Ip5306.readRegister8(IP5306_REG_SYS_CTL0) & IP5306_BOOST_OUT_BIT);
+    return ip5306.writeRegister8(IP5306_REG_SYS_CTL0, v | IP5306_BOOST_OUT_BIT) &&
+           (ip5306.readRegister8(IP5306_REG_SYS_CTL0) & IP5306_BOOST_OUT_BIT);
 }
 
 }  // namespace
@@ -47,14 +55,10 @@ void backlightHold() {
     // Po probuzeni hold ze spanku jeste plati -> pin je LOW. Nastavit vystup
     // LOW a hold znovu zapnout (po power-on zadny nebyl), M5GFX ho pres hold
     // nerozsviti. gpio_hold_dis az v backlightRelease().
-    gpio_config_t io = {};
-    io.pin_bit_mask = 1ULL << PIN_BACKLIGHT;
-    io.mode = GPIO_MODE_OUTPUT;
-    io.pull_up_en = GPIO_PULLUP_DISABLE;
-    io.pull_down_en = GPIO_PULLDOWN_ENABLE;
-    io.intr_type = GPIO_INTR_DISABLE;
+    // Pozor: NE gpio_config() - ta si v IDF 6 vystupni pin rezervuje a LEDC
+    // (PWM podsviceni v M5GFX) ho pak odmitne ("GPIO 32 is not usable").
     gpio_set_level(PIN_BACKLIGHT, 0);
-    gpio_config(&io);
+    gpio_set_direction(PIN_BACKLIGHT, GPIO_MODE_OUTPUT);
     gpio_set_level(PIN_BACKLIGHT, 0);
     gpio_hold_en(PIN_BACKLIGHT);
 }
@@ -64,6 +68,8 @@ void backlightRelease() {
 }
 
 bool powerInit() {
+    // Idempotentni - M5.begin() (kdyz se vola) ji inicializuje stejne.
+    m5::In_I2C.begin(I2C_NUM_0, GPIO_NUM_21, GPIO_NUM_22);
     bool ok = ip5306KeepOn();
     if (!ok) LOG("[pwr] IP5306 keep-on SELHAL - deska se ve spanku muze vypnout!");
     return ok;
@@ -77,7 +83,7 @@ void powerBeforeSleep() {
 }
 
 int powerBatteryLevel() {
-    return M5.Power.getBatteryLevel();
+    return ip5306.getBatteryLevel();
 }
 
 [[noreturn]] void powerShutdown() {
@@ -90,10 +96,10 @@ int powerBatteryLevel() {
     // SYS_CTL0 bit 1 = keep-on (nevypinat pri malem odberu) -> pustit.
     // SYS_CTL2 bity 2-3 = prodleva vypnuti pri malem odberu, 00 = 8 s.
     constexpr uint8_t IP5306_REG_SYS_CTL2 = 0x02;
-    uint8_t v = M5.Power.Ip5306.readRegister8(IP5306_REG_SYS_CTL0);
-    M5.Power.Ip5306.writeRegister8(IP5306_REG_SYS_CTL0, v & ~IP5306_BOOST_OUT_BIT);
-    v = M5.Power.Ip5306.readRegister8(IP5306_REG_SYS_CTL2);
-    M5.Power.Ip5306.writeRegister8(IP5306_REG_SYS_CTL2, v & ~0x0C);
+    uint8_t v = ip5306.readRegister8(IP5306_REG_SYS_CTL0);
+    ip5306.writeRegister8(IP5306_REG_SYS_CTL0, v & ~IP5306_BOOST_OUT_BIT);
+    v = ip5306.readRegister8(IP5306_REG_SYS_CTL2);
+    ip5306.writeRegister8(IP5306_REG_SYS_CTL2, v & ~0x0C);
 
     M5.Display.setBrightness(0);
     M5.Display.sleep();
@@ -109,5 +115,5 @@ int powerBatteryLevel() {
 bool powerOnUsb() {
     constexpr uint8_t IP5306_REG_READ0 = 0x70;
     constexpr uint8_t IP5306_VIN_BIT = 0x08;
-    return M5.Power.Ip5306.readRegister8(IP5306_REG_READ0) & IP5306_VIN_BIT;
+    return ip5306.readRegister8(IP5306_REG_READ0) & IP5306_VIN_BIT;
 }
