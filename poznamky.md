@@ -147,3 +147,9 @@ IP5306 ji vypnul (go/no-go), data do posledního zápisu do flash (≤ 4 h) se
 pošlou po zapnutí.
 
 Výsledek: (doplnit)
+
+**16:30 nahrán release 0.6.6** (místo 0.6.0–0.6.5; 0.6.5 měl kvůli rezervaci
+GPIO32 nefunkční PWM podsvícení). Při startu 16:26 `cidlo neodpovida` a diag
+neviděl na G5 externí pull-up — podezření na uvolněný vodič, uživatel
+kontroluje před odchodem. Doba bdění s 0.6.6 nezměřena (dřív 144–178 ms,
+očekávání < 60 ms bez M5.begin).
