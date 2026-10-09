@@ -1,17 +1,15 @@
 # Vodomer-teplomer
 
+**📈 Měřicí stránka: https://barkingbunny.github.io/vodomer-teplomer/**
+
 Nízkoenergetický teploměr (DS18B20) na **M5Stack Basic** (ESP32), čisté
 **ESP-IDF 6.1**. Měří každé 2 min, spí v deep sleep, 3× denně (na USB každé
 2 h) pošle data na ThingSpeak. Displej se rozsvítí jen po stisku tlačítka.
 
 ## Měřicí stránka (nástěnka)
 
-**https://barkingbunny.github.io/vodomer-teplomer/** — hlavní místo
-(zdroj: [docs/index.html](docs/index.html), GitHub Pages z větve `main`,
-složka `/docs`).
-
-Dočasně běží i stará kopie https://js-storage.github.io/home-temperature/vodomer/
-(repo `js-storage/home-temperature`); udržují se obě, ta druhá se časem smaže.
+Zdroj: [docs/index.html](docs/index.html), publikuje GitHub Pages z větve
+`main`, složka `/docs`.
 
 Stránka je jeden statický soubor: čte veřejný kanál ThingSpeak 3529108 přímo
 z prohlížeče, bez klíčů. Graf 24 h / 7 dní / vše, min/max/průměr, epizody nad
