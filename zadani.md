@@ -92,7 +92,7 @@ přepsat ho v `.env` a přeflashovat.
 | 2026-10-09 | Zdroj hodin ve spánku zůstává RC 150 kHz — čas slouží jen pro graf, NTP korekce stačí. Přesnější varianta v `optional.md` (relevantní až při párování s jiným dějem, další iterace). |
 | 2026-10-09 | **Stav Wi-Fi na displeji:** nastavené SSID a výsledek posledního okna musí být čitelné (neúspěch / nenastaveno zvýrazněně). |
 | 2026-10-09 | Ladění: místo UART příkazů `S`/`P` tlačítko na obrazovce (sync teď). Specifika ESP8266 (RF reboot, vyrovnávací spánek, CM4 programátor, simulátor) se nepřenášejí. |
-| 2026-10-09 | **Webová nástěnka:** druhá stránka https://js-storage.github.io/home-temperature/vodomer/ (repo `js-storage/home-temperature`, složka `vodomer/`, kanál 3529108, baterie z field7). Původní nástěnka beze změny, odkaz v README jako druhý. Lokální klon `C:\workspace\mine\home-temperature`. |
+| 2026-10-09 | **Webová nástěnka:** druhá stránka https://js-storage.github.io/home-temperature/vodomer/ (repo `js-storage/home-temperature`, složka `vodomer/`, kanál 3529108, baterie z field7). Původní nástěnka beze změny, odkaz v README jako druhý. Lokální klon `C:\workspace\mine\home-temperature`. **Aktualizace:** hlavní místo je od teď `docs/index.html` v tomto repu (https://barkingbunny.github.io/vodomer-teplomer/), kopie v `home-temperature/vodomer/` se dočasně udržuje a časem smaže. |
 | 2026-10-09 | 1-Wire: zapnutý i interní pull-up (~45k) vedle externího 4k7 — při odpojeném čidle jinak RMT čeká 1 s na timeout při každém probuzení (awake 1144 ms místo 144 ms). |
 
 ## Stav a otevřené body
