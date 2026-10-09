@@ -16,6 +16,9 @@ constexpr gpio_num_t PIN_BTN_B = GPIO_NUM_38;
 constexpr gpio_num_t PIN_BTN_C = GPIO_NUM_37;
 // Reproduktor (DAC1). Drzet LOW i ve spanku (RTC hold), jinak muze bzucet.
 constexpr gpio_num_t PIN_SPEAKER = GPIO_NUM_25;
+// Podsviceni LCD (RTC pin). Drzet LOW pres spanek i inicializaci M5GFX
+// (ta nastavi vychozi jas) - jinak displej pri kazdem probuzeni blikne.
+constexpr gpio_num_t PIN_BACKLIGHT = GPIO_NUM_32;
 
 // Perioda mereni (mrizka vzorku).
 constexpr uint32_t SAMPLE_PERIOD_S = 120;
@@ -77,4 +80,4 @@ constexpr uint32_t TS_TIMEOUT_MS = 10000;
 constexpr uint16_t TS_BATCH_MAX = 960;          // limit bulk_update
 constexpr uint32_t TS_BATCH_SPACING_MS = 16000;  // limit 15 s mezi zapisy
 
-#define FW_VERSION "0.6.4"
+#define FW_VERSION "0.6.5"

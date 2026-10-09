@@ -280,7 +280,8 @@ static void goToSleep() {
 }
 
 extern "C" void app_main() {
-    speakerOff();  // co nejdriv - kazdy plovouci okamzik na GPIO25 je slyset
+    speakerOff();     // co nejdriv - kazdy plovouci okamzik na GPIO25 je slyset
+    backlightHold();  // M5.begin() by displej na okamzik rozsvitil
 
     // Bitmapa zdroju probuzeni (1 << esp_sleep_wakeup_cause_t). Prijdou-li
     // timer i BtnA naraz, vyhrava tlacitko - slot se domeri v gridTick().

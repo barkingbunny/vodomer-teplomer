@@ -9,6 +9,11 @@
 // pak uvolnit hold ze spanku. Cim driv, tim kratsi plovouci pin po power-on.
 void speakerOff();
 
+// Hned za speakerOff(): podsviceni do LOW a podrzet (hold). M5.begin() ho pak
+// nemuze rozsvitit; uvolni ho az backlightRelease() tesne pred rozsvicenim.
+void backlightHold();
+void backlightRelease();
+
 // Po M5.begin(): nastavit a overit IP5306 keep-on. Vraci false, kdyz se
 // keep-on nepodarilo nastavit.
 bool powerInit();

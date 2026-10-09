@@ -228,6 +228,10 @@ void drawOffHint(uint32_t held_ms) {
 void wake() {
     if (lit) return;
     M5.Display.wakeup();
+    // Podsviceni je od bootu drzene v LOW (power.h). Nejdriv jas 0 (LEDC duty
+    // 0), pak hold uvolnit - pin zustane LOW - a teprve potom rozsvitit.
+    M5.Display.setBrightness(0);
+    backlightRelease();
     M5.Display.setBrightness(DISPLAY_BRIGHTNESS);
     lit = true;
 }

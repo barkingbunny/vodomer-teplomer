@@ -33,7 +33,7 @@ baterie z IP5306 (field7, displej) teď odpovídá jen modulu.
 | GPIO39 | BtnA | **budí z deep sleep** (ext0, aktivní LOW) |
 | GPIO38 | BtnB | jen při zapnutém displeji (zhasnout hned) |
 | GPIO25 | reproduktor (DAC1) | **držet LOW i ve spánku** (gpio_hold_en), jinak bzučí |
-| GPIO32 | podsvícení LCD | řeší M5GFX (setBrightness) |
+| GPIO32 | podsvícení LCD | **držet LOW přes spánek i `M5.begin()`** (gpio_hold, FW 0.6.5), jinak displej při každém probuzení blikne; uvolnit až před rozsvícením |
 | GPIO15 | SK6812 LED pásky (jen Fire) | nechat tmavé (`led_brightness = 0`) |
 | GPIO16/17 | PSRAM (jen Fire) | **nepoužívat** (na Fire blokuje Port C) |
 | GPIO36 | volný (Grove Port B žlutý) | input-only, pro 1-Wire nepoužitelný |
