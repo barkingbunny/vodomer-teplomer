@@ -146,7 +146,25 @@ Ráno: BtnA → `wake #`, `sent HH:MM`, řádek WiFi, BAT. Deska nereaguje →
 IP5306 ji vypnul (go/no-go), data do posledního zápisu do flash (≤ 4 h) se
 pošlou po zapnutí.
 
-Výsledek: (doplnit)
+**Výsledek (10. 10. 13:30, z kanálu 3529108): GO.** Deska přežila noc na
+baterii (jen Battery modul ~700 mAh), IP5306 ji nevypnul.
+- Okna na baterii **22:00 a 06:00 obě napoprvé** (fail 0), RSSI −44 / −47 dBm
+  na místě (lepší než v kanceláři).
+- **297 vzorků 20:08 → 05:56 bez jediné mezery**, 0 chyb čidla (kabel na místě
+  v pořádku). Teplota 31,9–35,8 °C.
+- **Baterie 100 % (22:00) → 75 % (06:00)** — IP5306 hlásí jen po 25 %, takže
+  přesný odběr nelze odvodit; pokles do pásma 75 % během ≤ 8 h odpovídá
+  průměru řádově 10–20 mA, tj. výdrž spíš **1,5–3 dny** než týden. Upřesní
+  další okna (14:00, 22:00).
+- **Drift 0,0 s/den** po 8 h mezi dvěma NTP — podezřele dobré (ESP32 kalibruje
+  RC oscilátor proti krystalu při každém probuzení, ale úplná nula je
+  nepravděpodobná). Ověřit po dalších oknech, případně zkontrolovat výpočet
+  v `timeSync()`.
+- **Chybí vzorky 16:30–20:08**: první teplota v kanálu je 20:08 a status
+  `power-on` s 56 vzorky ve 22:00 odpovídá startu desky ~20:06 (nové zapnutí
+  na místě). Data z epochy 16:30 (kancelář) se neposlala — buď byla deska
+  vypnuta/zapnuta před prvním NTP té epochy (vzorky bez času se neposílají,
+  `store.cpp`), nebo nebyla v RAM uložena do flash. Dořešit s uživatelem.
 
 **16:30 nahrán release 0.6.6** (místo 0.6.0–0.6.5; 0.6.5 měl kvůli rezervaci
 GPIO32 nefunkční PWM podsvícení). Při startu 16:26 `cidlo neodpovida` a diag
