@@ -101,9 +101,9 @@ přepsat ho v `.env` a přeflashovat.
 ## Finální deska: ESP32-C6-WROOM-1 (rozhodnutí 2026-10-12)
 
 M5Stack Basic je jen ověření konceptu. Pro vlastní desku zvolen modul
-**ESP32-C6-WROOM-1-N8** (LCSC C5366877, ~4,2 $, 8 MB flash, PCB anténa,
-25,5 × 18 mm; varianta -N4 C6034714). Priority výběru: snadné programování >
-spotřeba > cena.
+**ESP32-C6-WROOM-1** (PCB anténa, 25,5 × 18 mm; flash 4 nebo 8 MB podle
+dostupnosti — FW má 1,1 MB, stačí obojí). Priority výběru: snadné
+programování > spotřeba > cena. Nákup a dostupnost řeší uživatel sám.
 
 - **Programování:** stejné ESP-IDF a API jako teď (RMT 1-Wire, NVS, LittleFS,
   Wi-Fi, HTTP, SNTP) → FW se přenese změnou `IDF_TARGET=esp32c6`, odpadne
