@@ -177,3 +177,24 @@ GPIO32 nefunkční PWM podsvícení). Při startu 16:26 `cidlo neodpovida` a dia
 neviděl na G5 externí pull-up — podezření na uvolněný vodič, uživatel
 kontroluje před odchodem. Doba bdění s 0.6.6 nezměřena (dřív 144–178 ms,
 očekávání < 60 ms bez M5.begin).
+
+## Provoz 9.–12. 10. (FW 0.6.6, baterie, stav 12. 10. 10:25)
+
+- **1745 vzorků 9. 10. 20:08 → 12. 10. 05:55 bez mezery, 0 chyb čidla, 9 oken
+  všechna napoprvé** (RSSI −40 až −47 dBm).
+- **Baterie (jen modul ~700 mAh):** 100 % (9. 10. 22:00) → 75 % (10. 10. 06:00)
+  → 50 % (10. 10. 22:00) → 25 % (11. 10. 14:00). Pásmo 25 % za ~16 h →
+  průměrný odběr **~11 mA**, výdrž **~2,5–3 dny**. Sedí s odhadem pro IP5306
+  keep-on (3–15 mA); FW na tom nic nezmění.
+- **Powerbanka (11. 10. ~15:40):** ruční sync 15:44 (BtnC, 55 vzorků), baterie
+  25 → 50 → 75 %. Ale okna zůstala **22:00 / 06:00** (ne každé 2 h) a baterie
+  se zastavila na 75 % → **powerbanka se po chvíli sama vypnula** (malý odběr
+  ~10 mA, většina bank se pod ~50 mA odpojí) a deska běží dál z baterie.
+  Detekce USB (IP5306 READ0 bit 3) byla ověřena jen s PC. Pro trvalé napájení
+  použít USB adaptér nebo banku s režimem „always on / low current“.
+- **Drift 0,0 s/den ve všech 9 oknech.** Pravděpodobně skutečné: ESP32 kalibruje
+  RC oscilátor RTC proti krystalu při každém probuzení (každé 2 min), takže
+  teplotní drift mezi kalibracemi je zanedbatelný a chyba kalibrace (~±4 ppm
+  na jeden spánek) se přes 240 spánků vyprůměruje (< 0,05 s/den). Pro jistotu
+  ověřit v debug logu (`[time] sync ... odhad o X ms`), až bude deska u PC.
+
