@@ -98,6 +98,28 @@ přepsat ho v `.env` a přeflashovat.
 | 2026-10-09 | **Webová nástěnka:** druhá stránka https://js-storage.github.io/home-temperature/vodomer/ (repo `js-storage/home-temperature`, složka `vodomer/`, kanál 3529108, baterie z field7). Původní nástěnka beze změny, odkaz v README jako druhý. Lokální klon `C:\workspace\mine\home-temperature`. **Aktualizace:** hlavní místo je od teď `docs/index.html` v tomto repu (https://barkingbunny.github.io/vodomer-teplomer/), kopie v `home-temperature/vodomer/` se dočasně udržuje a časem smaže. |
 | 2026-10-09 | 1-Wire: zapnutý i interní pull-up (~45k) vedle externího 4k7 — při odpojeném čidle jinak RMT čeká 1 s na timeout při každém probuzení (awake 1144 ms místo 144 ms). |
 
+## Finální deska: ESP32-C6-WROOM-1 (rozhodnutí 2026-10-12)
+
+M5Stack Basic je jen ověření konceptu. Pro vlastní desku zvolen modul
+**ESP32-C6-WROOM-1-N8** (LCSC C5366877, ~4,2 $, 8 MB flash, PCB anténa,
+25,5 × 18 mm; varianta -N4 C6034714). Priority výběru: snadné programování >
+spotřeba > cena.
+
+- **Programování:** stejné ESP-IDF a API jako teď (RMT 1-Wire, NVS, LittleFS,
+  Wi-Fi, HTTP, SNTP) → FW se přenese změnou `IDF_TARGET=esp32c6`, odpadne
+  M5Unified/displej. **USB-Serial/JTAG v čipu** — nahrávání, log i ladění přes
+  USB konektor bez převodníku a bez auto-reset obvodu.
+- **Spotřeba:** deep sleep 7 µA (RTC + paměť), odhad v našem profilu
+  < 1 mAh/den → s LDO s Iq v µA roky na 700 mAh. RTC kalibrace proti krystalu
+  jako u ESP32 → drift ~0.
+- **Rádia navíc:** BLE 5 + **Zigbee/Thread (802.15.4)** pro případnou bránu
+  s daty živě; Wi-Fi 6 (TWT). **2× TWAI (CAN 2.0B)**, transceiver externě
+  (SN65HVD230); CAN FD ESP32 neumí.
+- **WROOM-1, ne MINI-1:** plošky jen po obvodu → ruční pájení a opravy
+  prototypů; MINI má plošky i zespodu.
+- Zamítnuto: ESP32-C3 (levnější, bez Zigbee, 1× CAN), WROOM-32E/U (bez USB
+  v čipu, 10 µA), nRF52840 (bez Wi-Fi, jiný SDK), ESP8266, ESP32-C2.
+
 ## Stav a otevřené body
 
 - Hotovo: milník 1 (deep sleep + napájení) a milník 2 (měření + displej);

@@ -17,6 +17,9 @@ tam je závazná specifikace fáze 3: ThingSpeak, NTP/drift, portál).
   (bez resetu desky). Spouštět z PowerShellu, ne z Git Bash (IDF odmítá MSYS).
   Build, `sdkconfig` i `managed_components` (junction) jsou mimo Google Drive
   v `%LOCALAPPDATA%\idf-build\vodomer-teplomer`.
+- Finální deska bude na **ESP32-C6-WROOM-1** (zadani.md) — M5Stack Basic je jen
+  ověření konceptu; nové věci psát tak, aby šly přenést (žádná závislost na
+  M5Unified mimo `display.*`/`diag.*`/`power.*`).
 - Vodoměr (TMAG5273) NENÍ zadání — neimplementovat bez výslovného pokynu.
 - `optional.md`: odložené nápady (heslo AP portálu, přesnější hodiny) — **není zadání**,
   neimplementovat bez pokynu, projít před release.
