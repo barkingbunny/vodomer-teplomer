@@ -30,6 +30,12 @@ int powerBatteryLevel();
 // v deep sleep, probudi ji BtnA. Nevraci se. Volajici predtim ulozi data.
 [[noreturn]] void powerShutdown();
 
+// Start po vypnuti dvojhmatem bez tlacitka A (IP5306 ve vypnutem stavu
+// periodicky zkousi vystup a ESP pri tom nabootuje): keep-on nezapinat,
+// hned usnout bez casovace, IP5306 do 8 s zase odpoji. Volat PRED
+// powerInit() a M5.begin(). Nevraci se.
+[[noreturn]] void powerStayOff();
+
 // Napajeni z USB (IP5306 READ0 bit 3: vstup pritomen a nabijeni povolene -
 // plati i pri plne baterii). Na USB jsou okna syncu castejsi (config.h).
 bool powerOnUsb();

@@ -252,6 +252,7 @@ static void runPortal() {
     displayMessage("SHUTTING DOWN", usb ? "on USB: press A to wake up"
                                         : "turn on: side POWER button");
     delayMs(800);
+    persistSetU32("off", 1);  // dalsi start bez tlacitka A = zustat vypnuty
     rtcInvalidate();
     powerShutdown();
 }
@@ -303,6 +304,23 @@ extern "C" void app_main() {
     bool cold = !(woke_timer || woke_button) || !valid;
     bool by_button = !cold && woke_button;
     bool power_on = cold && rst == ESP_RST_POWERON;
+
+    // Vypnuto dvojhmatem (NVS "off"): IP5306 ve vypnutem stavu periodicky
+    // zkousi, jestli na vystupu neni zatez - ESP pri tom nabootuje a drive si
+    // v powerInit() zapnul keep-on, takze se deska "sama zapnula". Start bez
+    // tlacitka A se proto hned uspi bez keep-on a IP5306 do 8 s zase odpoji.
+    // Zapnuti uzivatelem: POWER a do 8 s stisk A (ext0), nebo drzet A pri
+    // POWER - pak se priznak smaze a jede se jako po zapnuti napajeni.
+    if (cold) {
+        uint32_t off = 0;
+        if (persistGetU32("off", off) && off) {
+            gpio_set_direction(PIN_BTN_A, GPIO_MODE_INPUT);
+            bool btn_a = gpio_get_level(PIN_BTN_A) == 0;
+            if (!woke_button && !btn_a) powerStayOff();
+            persistSetU32("off", 0);
+            power_on = true;
+        }
+    }
 
     // M5.begin() (LCD, tlacitka, IP5306) jen kdyz bude displej potreba:
     // inicializace LCD v M5GFX ceka pevnych 120 ms po SLPOUT, coz byla vetsina

@@ -82,9 +82,17 @@ input-only) a pull-up na 5 V — přímo použít nejde.
 displeji). FW zapíše neuložené vzorky do flash, pustí keep-on IP5306
 (`SYS_CTL0` bit 1), zkrátí prodlevu vypnutí na 8 s (`SYS_CTL2` bity 2–3 = 00)
 a usne bez časovače → IP5306 při malém odběru do ~8 s odpojí napájení.
-Spotřeba pak jen klidový proud IP5306 (desítky µA). Zapnutí: **boční tlačítko
-POWER** (= power-on → portál 3 min, BtnB ho zavře; data z flash se odešlou
-při prvním syncu).
+Spotřeba pak jen klidový proud IP5306 (desítky µA).
+
+**Zapnutí (FW 0.6.7+): stisknout boční POWER a do 8 s stisknout BtnA** (nebo
+držet A při stisku POWER). Deska naběhne jako po zapnutí napájení (portál
+3 min, BtnB ho zavře; data z flash se odešlou při prvním syncu).
+
+Proč ne jen POWER: IP5306 ve vypnutém stavu periodicky zkouší, jestli na
+výstupu není zátěž — ESP32 při tom nabootuje (boot ~100 mA = „zátěž“) a FW do
+0.6.6 si hned zapnul keep-on, takže se deska po chvíli „sama zapnula“. Od 0.6.7
+si FW pamatuje v NVS příznak `off`: start bez tlačítka A keep-on nezapne a hned
+usne, IP5306 výstup do 8 s zase odpojí (jedna zkouška = ~150 ms bootu).
 
 - **Na USB IP5306 nevypíná** — deska zůstane v deep sleep, probudí ji BtnA
   (studený start bez portálu, měří dál).

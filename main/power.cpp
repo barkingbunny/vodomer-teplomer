@@ -86,6 +86,28 @@ int powerBatteryLevel() {
     return ip5306.getBatteryLevel();
 }
 
+namespace {
+
+// IP5306 pustit keep-on, zkratit prodlevu na 8 s a usnout bez casovace.
+// SYS_CTL0 bit 1 = keep-on (nevypinat pri malem odberu).
+// SYS_CTL2 bity 2-3 = prodleva vypnuti pri malem odberu, 00 = 8 s.
+[[noreturn]] void releaseAndSleep() {
+    constexpr uint8_t IP5306_REG_SYS_CTL2 = 0x02;
+    uint8_t v = ip5306.readRegister8(IP5306_REG_SYS_CTL0);
+    ip5306.writeRegister8(IP5306_REG_SYS_CTL0, v & ~IP5306_BOOST_OUT_BIT);
+    v = ip5306.readRegister8(IP5306_REG_SYS_CTL2);
+    ip5306.writeRegister8(IP5306_REG_SYS_CTL2, v & ~0x0C);
+
+    gpio_hold_en(PIN_SPEAKER);
+    gpio_hold_en(PIN_BACKLIGHT);
+    LOG_FLUSH();
+    // Bez casovace: na baterii IP5306 odpoji napajeni, na USB probudi BtnA.
+    esp_sleep_enable_ext0_wakeup(PIN_BTN_A, 0);
+    esp_deep_sleep_start();
+}
+
+}  // namespace
+
 [[noreturn]] void powerShutdown() {
     // Pockat na pusteni tlacitek - stisk A by desku hned probudil.
     do {
@@ -93,23 +115,18 @@ int powerBatteryLevel() {
         vTaskDelay(pdMS_TO_TICKS(10));
     } while (M5.BtnA.isPressed() || M5.BtnB.isPressed() || M5.BtnC.isPressed());
 
-    // SYS_CTL0 bit 1 = keep-on (nevypinat pri malem odberu) -> pustit.
-    // SYS_CTL2 bity 2-3 = prodleva vypnuti pri malem odberu, 00 = 8 s.
-    constexpr uint8_t IP5306_REG_SYS_CTL2 = 0x02;
-    uint8_t v = ip5306.readRegister8(IP5306_REG_SYS_CTL0);
-    ip5306.writeRegister8(IP5306_REG_SYS_CTL0, v & ~IP5306_BOOST_OUT_BIT);
-    v = ip5306.readRegister8(IP5306_REG_SYS_CTL2);
-    ip5306.writeRegister8(IP5306_REG_SYS_CTL2, v & ~0x0C);
-
     M5.Display.setBrightness(0);
     M5.Display.sleep();
-    gpio_hold_en(PIN_SPEAKER);
-    gpio_hold_en(PIN_BACKLIGHT);
     LOG("[pwr] vypinam");
-    LOG_FLUSH();
-    // Bez casovace: na baterii IP5306 odpoji napajeni, na USB probudi BtnA.
-    esp_sleep_enable_ext0_wakeup(PIN_BTN_A, 0);
-    esp_deep_sleep_start();
+    releaseAndSleep();
+}
+
+[[noreturn]] void powerStayOff() {
+    // Pred powerInit() - I2C si otevrit sami. LCD se neinicializoval (bez
+    // M5.begin), spi z minula; podsviceni drzi hold z backlightHold().
+    m5::In_I2C.begin(I2C_NUM_0, GPIO_NUM_21, GPIO_NUM_22);
+    LOG("[pwr] start po vypnuti bez tlacitka A - zustavam vypnuty");
+    releaseAndSleep();
 }
 
 bool powerOnUsb() {
