@@ -7,3 +7,8 @@ sdkconfig.old
 # IDE
 .vscode/.browse.c_cpp.db*
 .vscode/ipch/
+# VS Code Local History a lokalni KiCad soubory
+.history/
+*.kicad_prl
+*-backups/
+fp-info-cache
