@@ -146,7 +146,7 @@
   .legendnote { font-size: .8rem; color: var(--muted); margin-top: 6px; }
   .legendnote i { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin: 0 4px 0 8px; border-radius: 2px; }
   .chartbox.zoomable { cursor: zoom-in; }
-  dl.diag dd.link { color: var(--accent); cursor: pointer; text-decoration: underline dotted; }
+  dl.diag dt.link, dl.diag dd.link { color: var(--accent); cursor: pointer; text-decoration: underline dotted; }
   #vddBox { margin-top: 10px; }
   /* zvetseny graf pres celou obrazovku */
   .overlay { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: none; flex-direction: column; padding: 8px 12px 12px; }
@@ -869,9 +869,12 @@ function renderDiag(diags, temps, lastT) {
     const dtEl = document.createElement('dt'); dtEl.textContent = k;
     const dd = document.createElement('dd'); dd.textContent = v; if (cls) dd.style.color = cls;
     if (opts.onClick) {
-      dd.classList.add('link'); dd.title = opts.title || ''; dd.tabIndex = 0; dd.setAttribute('role', 'button');
-      dd.addEventListener('click', opts.onClick);
-      dd.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); opts.onClick(); } });
+      // klikaci je cely radek (popisek i hodnota)
+      for (const el of [dtEl, dd]) {
+        el.classList.add('link'); el.title = opts.title || ''; el.tabIndex = 0; el.setAttribute('role', 'button');
+        el.addEventListener('click', opts.onClick);
+        el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); opts.onClick(); } });
+      }
     }
     dl.append(dtEl, dd);
   };
