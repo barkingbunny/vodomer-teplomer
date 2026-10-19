@@ -5,11 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Vodoměr teplá voda – nástěnka</title>
 <!--
-  Nastenka pro teplomer M5Stack Basic (projekt Vodomer-teplomer, ThingSpeak kanal 3529108).
+  Nastenka pro teplomer na ThingSpeak kanalu 3529108 (projekt Vodomer-teplomer; od 16. 10. 2026
+  do kanalu posila deska FDM-MK4-WiFi s FW ESP-WROOM-02_temp_meas_v2, drive M5Stack Basic).
   HLAVNI kopie nastenky (repo barkingbunny/vodomer-teplomer, docs/). Druha kopie
   js-storage/home-temperature/vodomer/ se casem smaze. Puvod: nastenka ESP-WROOM-02.
-  Rozdil v polich: field6 = baterie [%],
-  pocet vzorku v davce je jen v textu status ("FW x.y.z <reset> samples N"), field7/8 volne.
+  Pole: field1 teplota, field2 RSSI, field3 neuspesna okna, field4 chybna mereni, field5 drift,
+  field6 = baterie [%] (rezerva odvozena z VDD), field7 = VDD [mV] (FW v2), field8 volne;
+  pocet vzorku v davce je jen v textu status ("FW x.y.z <reset> samples N").
+  Graf teploty jde klepnutim zvetsit a priblizovat (chartjs-plugin-zoom + hammer.js);
+  graf VDD se ukaze po klepnuti na hodnotu baterie ve stavu zarizeni.
   - jeden staticky soubor, otevrit primo v prohlizeci (file://)
   - data se ctou z ThingSpeak JSON API (CORS: Access-Control-Allow-Origin: *)
   - ID kanalu a Read API key zada uzivatel v Nastaveni, ukladaji se jen do localStorage prohlizece
@@ -27,6 +31,11 @@
         integrity="sha384-8IfMRI2dZTiLP9YEdmV1crHEnWdDyLYVokg18OO8HivLDMuK1rbsaFRSQl7rgQ0D" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-adapter-luxon/1.3.1/chartjs-adapter-luxon.umd.min.js"
         integrity="sha384-7cWzHabR6ZyfMWzZgVssYaOQRTccHUWZ0F09AanlF3RAJ/JNyFnIma2JTYIVKEUP" crossorigin="anonymous"></script>
+<!-- priblizeni grafu: hammer.js (dotyk, pinch) + chartjs-plugin-zoom (registruje se sam) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"
+        integrity="sha384-Cs3dgUx6+jDxxuqHvVH8Onpyj2LF1gKZurLDlhqzuJmUqVYMJ0THTWpxK5Z086Zm" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.0.1/chartjs-plugin-zoom.min.js"
+        integrity="sha384-zPzbVRXfR492Sd5D+HydTYCxxgHAfgVO8KERbLlpeH5unsmbAEXrscGUUqLZG9BM" crossorigin="anonymous"></script>
 <style>
   :root {
     color-scheme: light;
@@ -136,8 +145,19 @@
   dialog input[type=text], dialog input[type=password] { width: 100%; }
   .legendnote { font-size: .8rem; color: var(--muted); margin-top: 6px; }
   .legendnote i { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin: 0 4px 0 8px; border-radius: 2px; }
+  .chartbox.zoomable { cursor: zoom-in; }
+  dl.diag dd.link { color: var(--accent); cursor: pointer; text-decoration: underline dotted; }
+  #vddBox { margin-top: 10px; }
+  /* zvetseny graf pres celou obrazovku */
+  .overlay { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: none; flex-direction: column; padding: 8px 12px 12px; }
+  .overlay.show { display: flex; }
+  .overlay .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .overlay .bar h2 { margin: 0; }
+  .overlay .hint { font-size: .8rem; color: var(--muted); }
+  .overlay .chartbox { flex: 1; height: auto; min-height: 0; touch-action: none; }
   @media (max-width: 800px) {
     .grid2 { grid-template-columns: 1fr; }
+    .overlay .hint { display: none; }
     .chartbox { height: 260px; }
     .kpi .val { font-size: 1.35rem; }
     .kpi.hero .val { font-size: 1.8rem; }
@@ -176,8 +196,8 @@
 
   <section class="card">
     <h2 id="chartTitle">Teplota</h2>
-    <div class="chartbox"><canvas id="cTemp" aria-label="Graf teploty v čase"></canvas></div>
-    <div class="legendnote">Úseky nad prahem jsou <i style="background:var(--hot)"></i>červeně; mezery v datech delší než 10 min nejsou spojené čárou.</div>
+    <div class="chartbox zoomable" id="tempBox" title="Klepnutím zvětšit"><canvas id="cTemp" aria-label="Graf teploty v čase, klepnutím zvětšit"></canvas></div>
+    <div class="legendnote">Úseky nad prahem jsou <i style="background:var(--hot)"></i>červeně; mezery v datech delší než 10 min nejsou spojené čárou. Klepnutím na graf ho zvětšíte a můžete přibližovat (kolečko myši / dva prsty).</div>
   </section>
 
   <div class="grid2">
@@ -196,6 +216,10 @@
     <section class="card">
       <h2>Stav zařízení</h2>
       <dl class="diag" id="diag"><dt>–</dt><dd></dd></dl>
+      <div id="vddBox" hidden>
+        <div class="chartbox small"><canvas id="cVdd" aria-label="Napětí VDD a baterie v čase"></canvas></div>
+        <div class="legendnote">VDD = napájení modulu za regulátorem, měřené před každým odesláním. Dokud baterie stačí, drží se u 3,3 V; pokles znamená, že baterie dochází. Baterie [%] je rezerva odvozená z VDD, ne kapacita.</div>
+      </div>
     </section>
   </div>
 
@@ -210,6 +234,19 @@
   </section>
 
   <p class="sub">Data: ThingSpeak, časy v pásmu Europe/Prague. Klíč se ukládá jen v tomto prohlížeči.</p>
+</div>
+
+<div id="zoomOverlay" class="overlay" role="dialog" aria-label="Zvětšený graf teploty">
+  <div class="bar">
+    <h2 id="zoomTitle">Teplota</h2>
+    <div class="toolbar">
+      <span class="hint">kolečko / dva prsty = přiblížit · tažení = posun · Shift + tažení = výběr · dvojklik = výchozí</span>
+      <button id="btnZoomDefault" title="Vrátit výchozí výřez (zvolené období)">Výchozí</button>
+      <button id="btnZoomAll" title="Celé načtené období">Vše</button>
+      <button id="btnZoomClose" class="primary">Zavřít</button>
+    </div>
+  </div>
+  <div class="chartbox"><canvas id="cZoom" aria-label="Zvětšený graf teploty s přiblížením"></canvas></div>
 </div>
 
 <dialog id="dlg">
@@ -258,7 +295,7 @@ function statusSamples(status) {
 }
 
 // ThingSpeak feeds JSON -> {temps, diags, lastT}
-// temps: zaznamy s field1, diags: zaznamy s diagnostikou (field2..6 / status)
+// temps: zaznamy s field1, diags: zaznamy s diagnostikou (field2..7 / status)
 function parseFeeds(json) {
   const feeds = (json && Array.isArray(json.feeds)) ? json.feeds : [];
   const temps = [], diags = [];
@@ -271,10 +308,11 @@ function parseFeeds(json) {
     if (v !== null) temps.push({ t, v });
     const d = {
       t, rssi: num(f.field2), failWin: num(f.field3), errCnt: num(f.field4),
-      drift: num(f.field5), battery: num(f.field6), nSamples: statusSamples(f.status), status: f.status || null,
+      drift: num(f.field5), battery: num(f.field6), vdd: num(f.field7),
+      nSamples: statusSamples(f.status), status: f.status || null,
     };
     if (d.rssi !== null || d.failWin !== null || d.errCnt !== null || d.drift !== null ||
-        d.nSamples !== null || d.battery !== null || d.status) diags.push(d);
+        d.nSamples !== null || d.battery !== null || d.vdd !== null || d.status) diags.push(d);
   }
   temps.sort((a, b) => a.t - b.t);
   diags.sort((a, b) => a.t - b.t);
@@ -550,6 +588,7 @@ async function tsFetchRange(channelId, key, startMs, endMs, fetchFn = fetch, max
 <script>
 // --- UI ----------------------------------------------------------------------
 const STALE_H = 10;              // varovani, kdyz posledni data jsou starsi
+const SYNC_HOURS = [4, 10, 16, 22]; // okna odesilani FW v2 (mistni cas), pro odhad dalsiho odeslani
 const DEFAULT_CHANNEL = '3529108'; // verejny kanal Vodomer-teplomer - stranka funguje bez nastaveni
 const LS = 'vt.';                // prefix klicu v localStorage (oddelene od hlavni nastenky 'tm.')
 
@@ -568,6 +607,7 @@ const state = {
   key: new URLSearchParams(location.hash.slice(1)).get('key') || store.get('key', ''),
   thr: Number(store.get('thr', '35')),
   hyst: Number(store.get('hyst', '0.5')),
+  showVdd: store.get('vdd', '0') === '1',   // graf VDD pod stavem zarizeni (klepnuti na baterii)
   parsed: null,       // {temps, diags, lastT}
   loadedFrom: null,   // od kdy jsou data nactena
   loadedAll: false,
@@ -593,6 +633,19 @@ function ago(ms) {
   return `před ${Math.round(h / 24)} dny`;
 }
 const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+// Dalsi okno odesilani po nowMs (SYNC_HOURS v mistnim case), null bez luxonu.
+function nextSendMs(nowMs) {
+  if (typeof luxon === 'undefined') return null;
+  const now = luxon.DateTime.fromMillis(nowMs, { zone: TZ });
+  for (let d = 0; d < 2; d++) {
+    for (const h of SYNC_HOURS) {
+      const t = now.startOf('day').plus({ days: d, hours: h });
+      if (t > now) return t.toMillis();
+    }
+  }
+  return null;
+}
 
 function showErr(msg) { const b = $('bannerErr'); b.textContent = msg || ''; b.classList.toggle('show', !!msg); }
 
@@ -659,7 +712,7 @@ function render() {
   if (lastT == null) {
     stale.textContent = 'Za načtené období nejsou žádná data.'; stale.classList.add('show');
   } else if (now - lastT > STALE_H * HOUR_MS) {
-    stale.textContent = `Poslední data jsou ${ago(lastT)} (${dt(lastT)}). Zařízení se možná neozvalo – běžně posílá 3× denně (6, 14, 22 h).`;
+    stale.textContent = `Poslední data jsou ${ago(lastT)} (${dt(lastT)}). Zařízení se možná neozvalo – běžně posílá 4× denně (4, 10, 16, 22 h).`;
     stale.classList.add('show');
   } else stale.classList.remove('show');
 
@@ -685,6 +738,8 @@ function render() {
   renderTempChart(vis, w);
   renderThreshold(temps, w, vis);
   renderDiag(diags, temps, lastT);
+  renderVdd(diags);
+  if ($('zoomOverlay').classList.contains('show')) renderZoomChart();
 }
 
 function renderTempChart(vis, w) {
@@ -810,25 +865,183 @@ function renderDiag(diags, temps, lastT) {
   const d = diags[diags.length - 1];
   const dl = $('diag');
   dl.replaceChildren();
-  const add = (k, v, cls) => {
+  const add = (k, v, cls, opts = {}) => {
     const dtEl = document.createElement('dt'); dtEl.textContent = k;
     const dd = document.createElement('dd'); dd.textContent = v; if (cls) dd.style.color = cls;
+    if (opts.onClick) {
+      dd.classList.add('link'); dd.title = opts.title || ''; dd.tabIndex = 0; dd.setAttribute('role', 'button');
+      dd.addEventListener('click', opts.onClick);
+      dd.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); opts.onClick(); } });
+    }
     dl.append(dtEl, dd);
   };
   const staleC = lastT != null && Date.now() - lastT > STALE_H * HOUR_MS ? cssVar('--err-border') : null;
   add('Poslední záznam', lastT != null ? `${dt(lastT)} (${ago(lastT)})` : '–', staleC);
   if (!d) { add('Diagnostika', 'za načtené období žádná'); return; }
   add('Poslední odeslání', `${dt(d.t)} (${ago(d.t)})`);
+  const next = state.demo ? null : nextSendMs(Date.now());
+  if (next != null) add('Další odeslání', `~ ${dt(next)} (okna ${SYNC_HOURS.join(', ')} h)`);
   add('RSSI', d.rssi != null ? `${d.rssi} dBm` + (d.rssi < -80 ? ' (slabý signál)' : '') : '–');
   add('Neúspěšná okna', d.failWin != null ? String(d.failWin) : '–');
   add('Chybná měření', d.errCnt != null ? String(d.errCnt) : '–');
   add('Drift hodin', d.drift != null ? `${String(d.drift).replace('.', ',')} s/den` : '–');
   add('Vzorků v dávce', d.nSamples != null ? String(d.nSamples) : '–');
-  add('Baterie', d.battery != null ? `${d.battery} %` + (d.battery <= 25 ? ' (nabít)' : '') : '–',
-      d.battery != null && d.battery <= 25 ? cssVar('--err-border') : null);
+  // klepnuti na baterii = graf VDD a baterie v case (renderVdd)
+  add('Baterie', (d.battery != null ? `${d.battery} %` + (d.battery <= 25 ? ' (nabít)' : '') : '–') +
+      (state.showVdd ? ' ▾' : ' ▸'),
+      d.battery != null && d.battery <= 25 ? cssVar('--err-border') : null,
+      { onClick: toggleVdd, title: 'Klepnutím zobrazíte / skryjete graf napětí VDD' });
+  add('Napětí VDD', d.vdd != null ? `${d.vdd} mV` : '–');
   add('FW / reset', d.status || '–');
   const lastTemp = temps[temps.length - 1];
   add('Poslední teplota', lastTemp ? `${temp(lastTemp.v)} · ${dt(lastTemp.t)}` : '–');
+}
+
+function toggleVdd() {
+  state.showVdd = !state.showVdd; store.set('vdd', state.showVdd ? '1' : '0');
+  if (state.parsed) { renderDiag(state.parsed.diags, state.parsed.temps, state.parsed.lastT); renderVdd(state.parsed.diags); }
+}
+
+// Graf VDD [mV] (leva osa) a baterie [%] (prava osa) z diagnostiky za nactene obdobi.
+let chVdd = null;
+function renderVdd(diags) {
+  const box = $('vddBox');
+  box.hidden = !state.showVdd;
+  if (chVdd) { chVdd.destroy(); chVdd = null; }
+  if (!state.showVdd) return;
+  const c1 = cssVar('--series-1'), c2 = cssVar('--series-2'), grid = cssVar('--grid'), text2 = cssVar('--text2');
+  const vdd = diags.filter(d => d.vdd != null).map(d => ({ x: d.t, y: d.vdd }));
+  const bat = diags.filter(d => d.battery != null).map(d => ({ x: d.t, y: d.battery }));
+  chVdd = new Chart($('cVdd'), {
+    type: 'line',
+    data: {
+      datasets: [
+        { label: 'VDD [mV]', data: vdd, borderColor: c1, backgroundColor: c1, borderWidth: 2, pointRadius: 3, yAxisID: 'y', tension: 0 },
+        { label: 'Baterie [%]', data: bat, borderColor: c2, backgroundColor: c2, borderWidth: 1, borderDash: [5, 4], pointRadius: 2, yAxisID: 'y2', tension: 0 },
+        // kriticky prah FW (VDD_CRIT_MV): pod nim deska neposila
+        { label: 'Kritický práh 3000 mV', data: vdd.length ? [{ x: vdd[0].x, y: 3000 }, { x: vdd[vdd.length - 1].x, y: 3000 }] : [],
+          borderColor: cssVar('--hot'), borderDash: [3, 3], borderWidth: 1, pointRadius: 0, pointHitRadius: 0, yAxisID: 'y' },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
+      interaction: { mode: 'nearest', axis: 'x', intersect: false },
+      scales: {
+        x: { type: 'time', adapters: { date: { zone: TZ, locale: 'cs' } },
+             time: { tooltipFormat: 'd. M. yyyy HH:mm', displayFormats: { hour: 'HH:mm', day: 'd. M.' } },
+             grid: { color: grid }, ticks: { color: text2, maxRotation: 0, autoSkip: true } },
+        // pevny rozsah: sum +-1 mV by se jinak roztahl pres cely graf; pokles k prahu 3000 mV ma byt videt
+        y: { position: 'left', suggestedMin: 2900, suggestedMax: 3450, grid: { color: grid }, ticks: { color: text2, callback: v => v + ' mV' } },
+        y2: { position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false }, ticks: { color: text2, callback: v => v + ' %' } },
+      },
+      plugins: {
+        legend: { labels: { color: text2, boxHeight: 2 } },
+        tooltip: { filter: it => it.datasetIndex < 2,
+                   callbacks: { label: it => ` ${it.dataset.label.split(' ')[0]}: ${it.parsed.y}${it.dataset.yAxisID === 'y' ? ' mV' : ' %'}` } },
+      },
+    },
+  });
+  if (!vdd.length) {
+    const ctx = $('cVdd').getContext('2d');
+    ctx.save(); ctx.fillStyle = text2; ctx.font = '14px system-ui, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('Za načtené období není žádné měření VDD (posílá ho až FW v2).', $('cVdd').width / 2, 30);
+    ctx.restore();
+  }
+}
+
+// --- zvetseny graf s priblizenim (chartjs-plugin-zoom + hammer.js) ------------
+
+let chZoom = null;
+
+// Osa Y podle viditelneho vyrezu (plugin pri zoomu v ose X osu Y sam neprepocita).
+function fitZoomY(chart) {
+  const sc = chart.scales.x;
+  let lo = Infinity, hi = -Infinity;
+  for (const p of chart.data.datasets[0].data) {
+    if (p.y == null || p.x < sc.min || p.x > sc.max) continue;
+    if (p.y < lo) lo = p.y;
+    if (p.y > hi) hi = p.y;
+  }
+  if (lo === Infinity) return;
+  const pad = Math.max(0.5, (hi - lo) * 0.08);
+  chart.options.scales.y.min = Math.floor((lo - pad) * 2) / 2;
+  chart.options.scales.y.max = Math.ceil((hi + pad) * 2) / 2;
+  chart.update('none');
+}
+
+function renderZoomChart() {
+  if (!state.parsed) return;
+  const temps = state.parsed.temps;
+  const w = viewWindow();
+  const c1 = cssVar('--series-1'), hot = cssVar('--hot'), grid = cssVar('--grid'),
+        text2 = cssVar('--text2'), thrC = cssVar('--thr');
+  const thr = state.thr;
+  const minX = temps.length ? Math.min(temps[0].t, w.from) : w.from, maxX = Date.now();
+  $('zoomTitle').textContent = `Teplota – ${w.label}`;
+  const cfg = {
+    type: 'line',
+    data: {
+      datasets: [
+        {
+          label: 'Teplota [°C]', data: insertGaps(temps), borderColor: c1, borderWidth: 2, pointRadius: 0, pointHitRadius: 8,
+          spanGaps: false, tension: 0,
+          segment: { borderColor: ctx => (ctx.p0.parsed.y > thr || ctx.p1.parsed.y > thr) ? hot : c1 },
+        },
+        {
+          label: `Práh ${String(thr).replace('.', ',')} °C`, data: [{ x: minX, y: thr }, { x: maxX, y: thr }],
+          borderColor: thrC, borderDash: [5, 4], borderWidth: 1, pointRadius: 0, pointHitRadius: 0,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false, parsing: false, normalized: true,
+      interaction: { mode: 'nearest', axis: 'x', intersect: false },
+      scales: {
+        x: {
+          type: 'time', min: w.from, max: w.to,
+          adapters: { date: { zone: TZ, locale: 'cs' } },
+          time: { tooltipFormat: 'd. M. yyyy HH:mm', displayFormats: { minute: 'HH:mm', hour: 'HH:mm', day: 'd. M.' } },
+          grid: { color: grid }, ticks: { color: text2, maxRotation: 0, autoSkip: true },
+        },
+        y: { grid: { color: grid }, ticks: { color: text2, callback: v => v + ' °C' } },
+      },
+      plugins: {
+        legend: { labels: { color: text2, boxHeight: 2 } },
+        tooltip: { filter: it => it.datasetIndex === 0, callbacks: { label: it => ' ' + temp(it.parsed.y) } },
+        zoom: {
+          limits: { x: { min: minX, max: maxX, minRange: 20 * 60 * 1000 } },
+          pan: { enabled: true, mode: 'x', onPanComplete: ({ chart }) => fitZoomY(chart) },
+          zoom: {
+            wheel: { enabled: true }, pinch: { enabled: true },
+            drag: { enabled: true, modifierKey: 'shift', backgroundColor: 'rgba(42,120,214,.2)' },
+            mode: 'x', onZoomComplete: ({ chart }) => fitZoomY(chart),
+          },
+        },
+      },
+    },
+  };
+  if (chZoom) chZoom.destroy();
+  chZoom = new Chart($('cZoom'), cfg);
+  fitZoomY(chZoom);
+}
+
+function openZoom() {
+  if (!state.parsed) return;
+  $('zoomOverlay').classList.add('show');
+  document.body.style.overflow = 'hidden';
+  renderZoomChart();
+}
+function closeZoom() {
+  $('zoomOverlay').classList.remove('show');
+  document.body.style.overflow = '';
+  if (chZoom) { chZoom.destroy(); chZoom = null; }
+}
+function zoomDefault() { if (chZoom) { chZoom.resetZoom('none'); fitZoomY(chZoom); } }
+function zoomAll() {
+  if (!chZoom) return;
+  const lim = chZoom.options.plugins.zoom.limits.x;
+  chZoom.zoomScale('x', { min: lim.min, max: lim.max }, 'none');
+  fitZoomY(chZoom);
 }
 
 // --- nastaveni ---------------------------------------------------------------
@@ -877,6 +1090,20 @@ const onThr = () => {
 };
 $('inThr').addEventListener('change', onThr);
 $('inHyst').addEventListener('change', onThr);
+// zvetseny graf: klepnuti na graf teploty, zavreni krizkem / Esc, dvojklik nebo dvojity tap = vychozi vyrez
+$('tempBox').addEventListener('click', openZoom);
+$('btnZoomClose').addEventListener('click', closeZoom);
+$('btnZoomDefault').addEventListener('click', zoomDefault);
+$('btnZoomAll').addEventListener('click', zoomAll);
+$('cZoom').addEventListener('dblclick', zoomDefault);
+let tapT = 0, multiTouch = false;
+$('cZoom').addEventListener('touchstart', e => {
+  if (e.touches.length > 1) { multiTouch = true; return; }
+  const now = Date.now();
+  if (!multiTouch && now - tapT < 300) { zoomDefault(); tapT = 0; } else tapT = now;
+}, { passive: true });
+$('cZoom').addEventListener('touchend', e => { if (e.touches.length === 0) multiTouch = false; }, { passive: true });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('zoomOverlay').classList.contains('show')) closeZoom(); });
 // zmena svetly/tmavy rezim -> prekreslit grafy (barvy z CSS promennych)
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', render);
 
