@@ -2,6 +2,8 @@
 
 **📈 Měřicí stránka: https://barkingbunny.github.io/vodomer-teplomer/**
 
+**📈 Dva senzory v jednom grafu: https://barkingbunny.github.io/vodomer-teplomer/dva_senzory/**
+
 Nízkoenergetický teploměr (DS18B20) na **M5Stack Basic** (ESP32), čisté
 **ESP-IDF 6.1**. Měří každé 2 min, spí v deep sleep, 3× denně (na USB každé
 2 h) pošle data na ThingSpeak. Displej se rozsvítí jen po stisku tlačítka.
@@ -15,6 +17,12 @@ Stránka je jeden statický soubor: čte veřejný kanál ThingSpeak 3529108 př
 z prohlížeče, bez klíčů. Graf 24 h / 7 dní / vše, min/max/průměr, epizody nad
 prahem, stav zařízení (poslední odeslání, Wi-Fi, chyby, drift, baterie).
 Jiný kanál: `?ch=<id>`, demo data: `?demo`.
+
+Stránka [docs/dva_senzory/index.html](docs/dva_senzory/index.html) kreslí do
+jednoho grafu teplotu senzoru 1 (kanál 3529108) a senzoru 2 (kanál 3551603,
+deska 2 / `sdkconfig.board2`, posílá každých 60 s) se souhrnem max/min/průměr.
+CSS a blok STATS jsou kopie z `docs/index.html`, při změně je zkopírovat.
+Jiné kanály: `?ch1=<id>&ch2=<id>`, demo: `?demo`.
 
 - Zadání a decision log: [zadani.md](zadani.md) · HW a zapojení: [hw.md](hw.md)
   · poznámky z testů: [poznamky.md](poznamky.md) · odložené nápady: [optional.md](optional.md)
