@@ -6,7 +6,7 @@
 <title>Dva senzory – nástěnka</title>
 <!--
   Nastenka DVA SENZORY: teplota ze dvou ThingSpeak kanalu v jednom grafu.
-  Senzor 1 = kanal 3529108 (hlavni nastenka docs/index.html), senzor 2 = kanal 3551603
+  Senzor 1 "Recirkulace" = kanal 3529108 (hlavni nastenka docs/index.html), senzor 2 "Merak TUV" = kanal 3551603
   ("prichozi teplo", deska 2 / sdkconfig.board2, mereni i odesilani kazdych 60 s).
   - CSS a blok STATS (==STATS-BEGIN== / ==STATS-END==) jsou kopie z docs/index.html -
     pri zmene tam zkopirovat i sem; UI (spodni skript) je vlastni.
@@ -229,7 +229,7 @@
     <h2>Nastavení</h2>
     <div class="field">
       <label for="inName1">Senzor 1 – název</label>
-      <input type="text" id="inName1" autocomplete="off" placeholder="prázdné = název kanálu">
+      <input type="text" id="inName1" autocomplete="off" placeholder="prázdné = výchozí název">
     </div>
     <div class="field">
       <label for="inCh1">Senzor 1 – ID kanálu ThingSpeak</label>
@@ -237,7 +237,7 @@
     </div>
     <div class="field">
       <label for="inName2">Senzor 2 – název</label>
-      <input type="text" id="inName2" autocomplete="off" placeholder="prázdné = název kanálu">
+      <input type="text" id="inName2" autocomplete="off" placeholder="prázdné = výchozí název">
     </div>
     <div class="field">
       <label for="inCh2">Senzor 2 – ID kanálu ThingSpeak (prázdné = jen senzor 1)</label>
@@ -572,8 +572,8 @@ async function tsFetchRange(channelId, key, startMs, endMs, fetchFn = fetch, max
 const LS = 'vt2s.';              // prefix klicu v localStorage (oddelene od hlavni nastenky 'vt.')
 // Vychozi senzory. staleH = varovani, kdyz posledni data jsou starsi (podle periody odesilani).
 const SENSORS = [
-  { channel: '3529108', name: '', staleH: 10, color: '--series-1', sendInfo: '6× denně' },
-  { channel: '3551603', name: '', staleH: 1,  color: '--series-2', sendInfo: 'každou minutu' },
+  { channel: '3529108', name: 'Recirkulace', staleH: 10, color: '--series-1', sendInfo: '6× denně' },
+  { channel: '3551603', name: 'Měřák TUV',   staleH: 1,  color: '--series-2', sendInfo: 'každou minutu' },
 ];
 
 const store = {
