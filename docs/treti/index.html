@@ -1,0 +1,1043 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dvě čidla – nástěnka</title>
+<!--
+  Nastenka pro FW 2.7.0 (ESP-WROOM-02_temp_meas_v2): dve cidla DS18B20 v JEDNOM ThingSpeak kanalu.
+  Cidlo v kanalu 0 -> field1, cidlo v kanalu 1 -> field8 (prazdne, kdyz chybi). Diagnostika jen
+  u posledniho zaznamu davky: field2 RSSI, field5 drift s/den, field6 baterie %, field7 VDD mV,
+  field3/field4 prazdne; status "FW 2.7.0 <reset> samples N win W err E [batt-low] [extra]
+  [id0 <ROM>] [id1 <ROM>]" (ROM kody jen po studenem startu a po zmene prirazeni cidel).
+  Starsi zaznamy (do 2.6.0) maji okna a chyby ve field3/field4 - cte se obojí.
+  - CSS a blok STATS (==STATS-BEGIN== / ==STATS-END==) jsou kopie z docs/index.html -
+    pri zmene tam zkopirovat i sem; UI (spodni skript) je vlastni, parser parseFeeds27 taky.
+  - graf obou cidel, souhrn s ROM kodem, posledni odeslani (status rozlozeny) a historie odeslani;
+    prah, epizody a graf VDD zustavaji na hlavni nastence (jen field1)
+  - kanal a nazvy cidel v Nastaveni, kanal i adresou ?ch=...; demo: ?demo
+  - graf jde klepnutim zvetsit a priblizovat (chartjs-plugin-zoom + hammer.js)
+-->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"
+        integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/luxon/3.4.4/luxon.min.js"
+        integrity="sha384-8IfMRI2dZTiLP9YEdmV1crHEnWdDyLYVokg18OO8HivLDMuK1rbsaFRSQl7rgQ0D" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-adapter-luxon/1.3.1/chartjs-adapter-luxon.umd.min.js"
+        integrity="sha384-7cWzHabR6ZyfMWzZgVssYaOQRTccHUWZ0F09AanlF3RAJ/JNyFnIma2JTYIVKEUP" crossorigin="anonymous"></script>
+<!-- priblizeni grafu: hammer.js (dotyk, pinch) + chartjs-plugin-zoom (registruje se sam) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/hammer.js/2.0.8/hammer.min.js"
+        integrity="sha384-Cs3dgUx6+jDxxuqHvVH8Onpyj2LF1gKZurLDlhqzuJmUqVYMJ0THTWpxK5Z086Zm" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-plugin-zoom/2.0.1/chartjs-plugin-zoom.min.js"
+        integrity="sha384-zPzbVRXfR492Sd5D+HydTYCxxgHAfgVO8KERbLlpeH5unsmbAEXrscGUUqLZG9BM" crossorigin="anonymous"></script>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f4f4f2;
+    --surface: #fcfcfb;
+    --border: #e2e1dc;
+    --text: #0b0b0b;
+    --text2: #52514e;
+    --muted: #7a7974;
+    --grid: #ebeae6;
+    --series-1: #2a78d6;   /* teplota, 7 dni */
+    --series-2: #eb6834;   /* cele obdobi */
+    --hot: #e34948;        /* useky nad prahem */
+    --thr: #7a7974;        /* cara prahu */
+    --warn-bg: #fff4d6;
+    --warn-border: #fab219;
+    --err-bg: #fde8e8;
+    --err-border: #d03b3b;
+    --ok: #0ca30c;
+    --accent: #2a78d6;
+    --accent-ink: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #111110;
+      --surface: #1a1a19;
+      --border: #33332f;
+      --text: #ffffff;
+      --text2: #c3c2b7;
+      --muted: #9a998f;
+      --grid: #2a2a27;
+      --series-1: #3987e5;
+      --series-2: #d95926;
+      --hot: #e66767;
+      --thr: #9a998f;
+      --warn-bg: #3a2f10;
+      --warn-border: #fab219;
+      --err-bg: #3a1717;
+      --err-border: #d03b3b;
+      --accent: #3987e5;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #111110; --surface: #1a1a19; --border: #33332f; --text: #ffffff; --text2: #c3c2b7;
+    --muted: #9a998f; --grid: #2a2a27; --series-1: #3987e5; --series-2: #d95926; --hot: #e66767;
+    --thr: #9a998f; --warn-bg: #3a2f10; --err-bg: #3a1717; --accent: #3987e5;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  h1 { font-size: 1.3rem; margin: 0; }
+  h2 { font-size: 1rem; margin: 0 0 8px; }
+  .sub { color: var(--text2); font-size: .85rem; }
+  .muted { color: var(--muted); }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; border-right: 1px solid var(--border); }
+  .seg button:last-child { border-right: 0; }
+  button {
+    font: inherit; font-size: .9rem; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+    background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  }
+  button:hover { border-color: var(--muted); }
+  button.on, button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: default; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; min-width: 0; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .kpi { margin: 0; }
+  .kpi .lbl { color: var(--text2); font-size: .8rem; }
+  .kpi .val { font-size: 1.6rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .kpi.hero .val { font-size: 2.2rem; }
+  .kpi .when { color: var(--muted); font-size: .8rem; }
+  .chartbox { position: relative; height: 320px; }
+  .chartbox.small { height: 240px; }
+  .grid2 { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
+  .banner { border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; border: 1px solid; display: none; }
+  .banner.show { display: block; }
+  .banner.warn { background: var(--warn-bg); border-color: var(--warn-border); }
+  .banner.err { background: var(--err-bg); border-color: var(--err-border); }
+  table { border-collapse: collapse; width: 100%; font-size: .88rem; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--text2); font-weight: 600; }
+  .tablewrap { overflow-x: auto; max-height: 360px; overflow-y: auto; }
+  dl.diag { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: .9rem; }
+  dl.diag dt { color: var(--text2); }
+  dl.diag dd { margin: 0; font-variant-numeric: tabular-nums; word-break: break-word; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 8px; }
+  label.inl { display: inline-flex; gap: 6px; align-items: center; font-size: .9rem; }
+  input[type=number], input[type=text], input[type=password] {
+    font: inherit; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text);
+  }
+  input[type=number] { width: 5.5em; }
+  .typical { font-size: 1.05rem; margin: 4px 0 10px; }
+  .typical b { font-size: 1.25rem; }
+  .badge { display: inline-block; font-size: .75rem; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--text2); }
+  .badge.demo { border-color: var(--series-2); color: var(--series-2); }
+  dialog { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); max-width: 480px; width: calc(100% - 32px); }
+  dialog::backdrop { background: rgba(0,0,0,.4); }
+  dialog .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+  dialog input[type=text], dialog input[type=password] { width: 100%; }
+  .legendnote { font-size: .8rem; color: var(--muted); margin-top: 6px; }
+  .legendnote i { display: inline-block; width: 18px; height: 3px; vertical-align: middle; margin: 0 4px 0 8px; border-radius: 2px; }
+  .chartbox.zoomable { cursor: zoom-in; }
+  dl.diag dt.link, dl.diag dd.link { color: var(--accent); cursor: pointer; text-decoration: underline dotted; }
+  #vddBox { margin-top: 10px; }
+  /* zvetseny graf pres celou obrazovku */
+  .overlay { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: none; flex-direction: column; padding: 8px 12px 12px; }
+  .overlay.show { display: flex; }
+  .overlay .bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .overlay .bar h2 { margin: 0; }
+  .overlay .hint { font-size: .8rem; color: var(--muted); }
+  .overlay .chartbox { flex: 1; height: auto; min-height: 0; touch-action: none; }
+  @media (max-width: 800px) {
+    .grid2 { grid-template-columns: 1fr; }
+    .overlay .hint { display: none; }
+    .chartbox { height: 260px; }
+    .kpi .val { font-size: 1.35rem; }
+    .kpi.hero .val { font-size: 1.8rem; }
+  }
+</style>
+<style>
+  .sw { display: inline-block; width: 14px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 8px; }
+  td.big { font-size: 1.15rem; font-weight: 650; }
+  td .when { display: block; color: var(--muted); font-size: .78rem; font-weight: 400; }
+  .chartbox.tall { height: 380px; }
+  .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .cols2 h2 .sw { margin-right: 6px; }
+  @media (max-width: 800px) { .chartbox.tall { height: 280px; } .cols2 { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Dvě čidla, jeden kanál <span id="srcBadge" class="badge">–</span></h1>
+      <div class="sub" id="loadInfo">Načítání…</div>
+    </div>
+    <div class="toolbar">
+      <div class="seg" role="group" aria-label="Období">
+        <button data-range="24h">24 h</button>
+        <button data-range="7d">7 dní</button>
+        <button data-range="all">Vše</button>
+      </div>
+      <button id="btnRefresh" title="Znovu načíst data">Obnovit</button>
+      <button id="btnDemo" title="Generovaná data bez připojení k ThingSpeak">Demo</button>
+      <button id="btnSettings">Nastavení</button>
+    </div>
+  </header>
+
+  <div id="bannerStale" class="banner warn" role="status"></div>
+  <div id="bannerErr" class="banner err" role="alert"></div>
+
+  <section class="card">
+    <h2 id="chartTitle">Teplota</h2>
+    <div class="chartbox tall zoomable" id="tempBox" title="Klepnutím zvětšit"><canvas id="cTemp" aria-label="Graf teploty obou čidel v čase, klepnutím zvětšit"></canvas></div>
+    <div class="legendnote">Mezery v datech delší než 10 min nejsou spojené čárou. Klepnutím na graf ho zvětšíte a můžete přibližovat (kolečko myši / dva prsty). Klepnutím na položku legendy čidlo skryjete.</div>
+  </section>
+
+  <section class="card">
+    <h2 id="tblTitle">Souhrn</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Čidlo</th><th>Poslední</th><th id="thMax">Maximum</th><th id="thMin">Minimum</th><th id="thAvg">Průměr</th><th>Pole / ROM kód</th></tr></thead>
+        <tbody id="sumBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="cols2">
+    <section class="card"><h2>Poslední odeslání</h2><dl class="diag" id="diag"><dt>–</dt><dd></dd></dl></section>
+    <section class="card">
+      <h2>Historie odeslání</h2>
+      <div class="tablewrap">
+        <table>
+          <thead><tr><th>Čas</th><th>FW</th><th>Reset</th><th>Vzorků</th><th>Okna</th><th>Chyby</th><th>RSSI</th><th>Bat.</th><th>Příznaky</th></tr></thead>
+          <tbody id="histBody"></tbody>
+        </table>
+      </div>
+      <div class="legendnote">Okna = neúspěšná okna, Chyby = chybná měření (obojí od posledního úspěšného odeslání).</div>
+    </section>
+  </div>
+
+  <p class="sub">Data: ThingSpeak, jeden kanál, FW 2.7.0: čidlo v kanálu 0 = field1, čidlo v kanálu 1 = field8. Časy v pásmu Europe/Prague. Práh, epizody a graf VDD: <a href="../" style="color:var(--accent)">hlavní nástěnka</a> (jen field1).</p>
+</div>
+
+<div id="zoomOverlay" class="overlay" role="dialog" aria-label="Zvětšený graf teploty">
+  <div class="bar">
+    <h2 id="zoomTitle">Teplota</h2>
+    <div class="toolbar">
+      <span class="hint">kolečko / dva prsty = přiblížit · tažení = posun · Shift + tažení = výběr · dvojklik = výchozí</span>
+      <button id="btnZoomDefault" title="Vrátit výchozí výřez (zvolené období)">Výchozí</button>
+      <button id="btnZoomAll" title="Celé načtené období">Vše</button>
+      <button id="btnZoomClose" class="primary">Zavřít</button>
+    </div>
+  </div>
+  <div class="chartbox"><canvas id="cZoom" aria-label="Zvětšený graf teploty s přiblížením"></canvas></div>
+</div>
+
+<dialog id="dlg">
+  <form method="dialog" id="dlgForm">
+    <h2>Nastavení</h2>
+    <div class="field">
+      <label for="inCh">ID kanálu ThingSpeak</label>
+      <input type="text" id="inCh" inputmode="numeric" autocomplete="off">
+    </div>
+    <div class="field">
+      <label for="inName1">Čidlo v kanálu 0 (field1) – název</label>
+      <input type="text" id="inName1" autocomplete="off" placeholder="prázdné = výchozí název">
+    </div>
+    <div class="field">
+      <label for="inName2">Čidlo v kanálu 1 (field8) – název</label>
+      <input type="text" id="inName2" autocomplete="off" placeholder="prázdné = výchozí název">
+    </div>
+    <p class="sub">Kanál musí být veřejný. Nastavení se ukládá jen v tomto prohlížeči.</p>
+    <div class="toolbar" style="justify-content:flex-end">
+      <button type="button" id="btnDefaults">Výchozí</button>
+      <button type="button" id="btnCancel">Zrušit</button>
+      <button value="ok" class="primary" id="btnSave">Uložit a načíst</button>
+    </div>
+  </form>
+</dialog>
+
+<script id="stats">
+// ==STATS-BEGIN==
+// Ciste funkce bez DOM - pouziva je stranka i test (web/test_stats.mjs).
+// Vzorek teploty = {t: ms UTC, v: °C}, pole serazene podle t.
+
+const TZ = 'Europe/Prague';
+const SAMPLE_MS = 60 * 1000;            // nominalni perioda mereni (od FW 2.4.0 60 s, drive 120 s)
+const MAX_GAP_MS = 10 * 60 * 1000;      // vetsi mezera = vypadek (necara v grafu, konec epizody)
+const HOUR_MS = 3600 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+const TS_MAX_RESULTS = 8000;            // limit ThingSpeak na jeden pozadavek
+
+function num(x) {
+  if (x === null || x === undefined || x === '') return null;
+  const n = Number(x);
+  return Number.isFinite(n) ? n : null;
+}
+
+// Pocet vzorku v davce z textu status ("... samples 240"), null kdyz tam neni.
+function statusSamples(status) {
+  const m = /samples (\d+)/.exec(status || '');
+  return m ? Number(m[1]) : null;
+}
+
+// ThingSpeak feeds JSON -> {temps, diags, lastT}
+// temps: zaznamy s field1, diags: zaznamy s diagnostikou (field2..7 / status)
+function parseFeeds(json) {
+  const feeds = (json && Array.isArray(json.feeds)) ? json.feeds : [];
+  const temps = [], diags = [];
+  let lastT = null;
+  for (const f of feeds) {
+    const t = Date.parse(f.created_at);
+    if (!Number.isFinite(t)) continue;
+    if (lastT === null || t > lastT) lastT = t;
+    const v = num(f.field1);
+    if (v !== null) temps.push({ t, v });
+    const d = {
+      t, rssi: num(f.field2), failWin: num(f.field3), errCnt: num(f.field4),
+      drift: num(f.field5), battery: num(f.field6), vdd: num(f.field7),
+      nSamples: statusSamples(f.status), status: f.status || null,
+    };
+    if (d.rssi !== null || d.failWin !== null || d.errCnt !== null || d.drift !== null ||
+        d.nSamples !== null || d.battery !== null || d.vdd !== null || d.status) diags.push(d);
+  }
+  temps.sort((a, b) => a.t - b.t);
+  diags.sort((a, b) => a.t - b.t);
+  // duplicitni casove znacky (server je stejne zahodi) - nechat jen prvni
+  const uniq = temps.filter((s, i) => i === 0 || s.t !== temps[i - 1].t);
+  return { temps: uniq, diags, lastT };
+}
+
+function inRange(temps, fromMs, toMs) {
+  return temps.filter(s => s.t >= fromMs && s.t <= toMs);
+}
+
+// Body pro graf: mezi vzorky s mezerou > maxGap vlozi {y:null}, aby se cara nespojila.
+function insertGaps(temps, maxGap = MAX_GAP_MS) {
+  const out = [];
+  for (let i = 0; i < temps.length; i++) {
+    if (i > 0 && temps[i].t - temps[i - 1].t > maxGap) {
+      out.push({ x: temps[i - 1].t + 1, y: null });
+    }
+    out.push({ x: temps[i].t, y: temps[i].v });
+  }
+  return out;
+}
+
+// min / max / prumer (prumer prostym vzorku); u min a max cas prvniho vyskytu
+function summarize(temps) {
+  if (!temps.length) return null;
+  let min = temps[0], max = temps[0], sum = 0;
+  for (const s of temps) {
+    if (s.v > max.v) max = s;
+    if (s.v < min.v) min = s;
+    sum += s.v;
+  }
+  return { n: temps.length, min: { v: min.v, t: min.t }, max: { v: max.v, t: max.t },
+           avg: sum / temps.length, from: temps[0].t, to: temps[temps.length - 1].t };
+}
+
+// Konec intervalu, ktery vzorek i "pokryva": do dalsiho vzorku, pokud neni mezera,
+// jinak nominalni perioda mereni.
+function coverageEnd(temps, i, maxGap = MAX_GAP_MS, sampleMs = SAMPLE_MS) {
+  const next = temps[i + 1];
+  if (next && next.t - temps[i].t <= maxGap) return next.t;
+  return temps[i].t + sampleMs;
+}
+
+// Epizody nad prahem.
+// - zacina vzorkem v > thr
+// - pokracuje, dokud v > thr - hyst (kratky pokles do pasma hystereze epizodu neprerusi)
+// - mezera v datech > maxGap epizodu ukonci
+// - konec = konec pokryti posledniho vzorku, ktery byl nad prahem (ne vzorku v pasmu)
+// - open = epizoda trva do konce dat (posledni vzorek je stale nad prahem)
+// Vystup: [{start, end, durMin, max, maxT, n}]
+function findEpisodes(temps, thr, opts = {}) {
+  const hyst = opts.hyst || 0;
+  const maxGap = opts.maxGap || MAX_GAP_MS;
+  const sampleMs = opts.sampleMs || SAMPLE_MS;
+  const eps = [];
+  let cur = null, lastAboveIdx = -1;
+  const close = () => {
+    const end = coverageEnd(temps, lastAboveIdx, maxGap, sampleMs);
+    cur.end = end;
+    cur.durMin = (end - cur.start) / 60000;
+    cur.open = lastAboveIdx === temps.length - 1;
+    eps.push(cur);
+    cur = null;
+  };
+  for (let i = 0; i < temps.length; i++) {
+    const s = temps[i];
+    if (cur && temps[i].t - temps[i - 1].t > maxGap) close();
+    if (cur) {
+      if (s.v > thr - hyst) {
+        if (s.v > thr) lastAboveIdx = i;
+        if (s.v > cur.max) { cur.max = s.v; cur.maxT = s.t; }
+        cur.n++;
+        continue;
+      }
+      close();
+    }
+    if (s.v > thr) {
+      cur = { start: s.t, end: null, durMin: 0, max: s.v, maxT: s.t, n: 1, open: false };
+      lastAboveIdx = i;
+    }
+  }
+  if (cur) close();
+  return eps;
+}
+
+// Hodina dne a datum v casove zone (Europe/Prague). Cache podle zacatku UTC hodiny -
+// posun Prahy je cely pocet hodin, takze hranice hodin UTC a mistni se kryji.
+const _tzCache = new Map();
+function localHourKey(ms, tz = TZ) {
+  const h0 = Math.floor(ms / HOUR_MS) * HOUR_MS;
+  const key = tz + h0;
+  let r = _tzCache.get(key);
+  if (!r) {
+    const p = {};
+    for (const x of new Intl.DateTimeFormat('en-GB', {
+      timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date(h0))) p[x.type] = x.value;
+    r = { hour: Number(p.hour) % 24, date: `${p.year}-${p.month}-${p.day}` };
+    if (_tzCache.size > 50000) _tzCache.clear();
+    _tzCache.set(key, r);
+  }
+  return r;
+}
+
+// Rozlozeni casu nad prahem podle hodiny dne (mistni cas).
+// Kazdy vzorek pokryva interval [t, coverageEnd); interval se rozdeli na hranicich hodin.
+// Vystup: pole 24 x {hour, minAbove, daysAbove, daysData, avgPerDay}
+//   minAbove  - celkem minut nad prahem v teto hodine
+//   daysAbove - pocet dni, kdy v teto hodine bylo neco nad prahem
+//   daysData  - pocet dni, kdy v teto hodine byla vubec data
+//   avgPerDay - minAbove / daysData (prumerne minut za den, 0..60)
+function hourlyAbove(temps, thr, opts = {}) {
+  const maxGap = opts.maxGap || MAX_GAP_MS;
+  const sampleMs = opts.sampleMs || SAMPLE_MS;
+  const tz = opts.tz || TZ;
+  const fromMs = opts.fromMs ?? -Infinity, toMs = opts.toMs ?? Infinity;
+  const minAbove = new Array(24).fill(0);
+  const above = Array.from({ length: 24 }, () => new Set());
+  const data = Array.from({ length: 24 }, () => new Set());
+  for (let i = 0; i < temps.length; i++) {
+    let a = Math.max(temps[i].t, fromMs);
+    const b = Math.min(coverageEnd(temps, i, maxGap, sampleMs), toMs);
+    const hot = temps[i].v > thr;
+    while (a < b) {
+      const hEnd = Math.min(b, (Math.floor(a / HOUR_MS) + 1) * HOUR_MS);
+      const { hour, date } = localHourKey(a, tz);
+      data[hour].add(date);
+      if (hot) { minAbove[hour] += (hEnd - a) / 60000; above[hour].add(date); }
+      a = hEnd;
+    }
+  }
+  return minAbove.map((m, h) => ({
+    hour: h, minAbove: m, daysAbove: above[h].size, daysData: data[h].size,
+    avgPerDay: data[h].size ? m / data[h].size : 0,
+  }));
+}
+
+// "Typicka doba": hodiny, kdy byl prah prekrocen aspon v polovine dni s daty.
+// Kdyz takova neni, hodiny s aspon polovinou maxima minut. Souvisle useky -> "13–16 h".
+function typicalHours(hourly, minShare = 0.5) {
+  const anyAbove = hourly.some(h => h.minAbove > 0);
+  if (!anyAbove) return { hours: [], ranges: [], text: '' , basis: 'none' };
+  let hours = hourly.filter(h => h.daysData > 0 && h.daysAbove / h.daysData >= minShare).map(h => h.hour);
+  let basis = 'days';
+  if (!hours.length) {
+    const mx = Math.max(...hourly.map(h => h.minAbove));
+    hours = hourly.filter(h => h.minAbove >= mx * 0.5).map(h => h.hour);
+    basis = 'minutes';
+  }
+  const ranges = [];
+  for (const h of hours) {
+    const last = ranges[ranges.length - 1];
+    if (last && last[1] === h - 1) last[1] = h; else ranges.push([h, h]);
+  }
+  // usek pres pulnoc (22-23 + 0-1) spojit
+  if (ranges.length > 1 && ranges[0][0] === 0 && ranges[ranges.length - 1][1] === 23) {
+    const tail = ranges.pop();
+    ranges[0] = [tail[0], ranges[0][1] + 24];
+  }
+  const text = ranges.map(([a, b]) => `${a}–${(b + 1) % 24 || 24} h`).join(', ');
+  return { hours, ranges, text, basis };
+}
+
+// --- demo data ---------------------------------------------------------------
+
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Generuje data ve formatu ThingSpeak feeds JSON (prochazi stejnym parseFeeds).
+// Denni prubeh 20-28 °C, odpoledni spicka (12-17 h mistniho casu) vetsinou nad 35 °C,
+// obcas vypadek (mezera 20 min - 3 h) a sem tam chybejici vzorek; diagnostika 3x denne.
+function genDemo(nowMs, days = 10, seed = 42) {
+  const rnd = mulberry32(seed);
+  const end = Math.floor(nowMs / SAMPLE_MS) * SAMPLE_MS - 37 * 60000; // posledni odeslani pred chvili
+  const start = end - days * DAY_MS;
+  // parametry spicky pro kazdy den
+  const dayPar = new Map();
+  const par = (date) => {
+    if (!dayPar.has(date)) {
+      const strong = rnd() < 0.75;
+      dayPar.set(date, {
+        center: 13.5 + rnd() * 2.5,               // hodina vrcholu
+        width: 1.2 + rnd() * 1.0,                 // sirka spicky v h
+        amp: strong ? 9 + rnd() * 6 : 3 + rnd() * 4, // vrchol ~ 34-41 / 28-33 °C
+        base: 21 + rnd() * 3,
+        outage: rnd() < 0.35 ? { at: rnd() * 24, len: 20 + rnd() * 160 } : null,
+      });
+    }
+    return dayPar.get(date);
+  };
+  const feeds = [];
+  let id = 1, errCnt = 0, lastDiagSlot = null;
+  for (let t = start; t <= end; t += SAMPLE_MS) {
+    const { hour, date } = localHourKey(t);
+    const minute = new Date(t).getUTCMinutes();
+    const hf = hour + minute / 60;
+    const p = par(date);
+    if (p.outage && hf >= p.outage.at && hf < p.outage.at + p.outage.len / 60) continue;
+    if (rnd() < 0.01) { errCnt++; continue; }   // chybne mereni - vynechano
+    const daily = 3 * Math.cos(2 * Math.PI * (hf - 15) / 24);
+    const peak = p.amp * Math.exp(-0.5 * ((hf - p.center) / p.width) ** 2);
+    const v = Math.round((p.base + daily + peak + (rnd() - 0.5) * 0.6) * 4) / 4;
+    const rec = { created_at: new Date(t).toISOString().replace('.000', ''), entry_id: id++, field1: v.toFixed(2) };
+    // posledni vzorek pred 6:00, 14:00, 22:00 nese diagnostiku
+    const slot = (hour === 5 || hour === 13 || hour === 21) && minute >= 56 ? date + hour : null;
+    if (slot && slot !== lastDiagSlot) {
+      lastDiagSlot = slot;
+      Object.assign(rec, {
+        field2: String(-55 - Math.round(rnd() * 20)), field3: '0', field4: String(errCnt),
+        field5: (-100 + rnd() * 10).toFixed(1), field6: '75', status: 'FW 0.6.2 power-on samples 240 (demo)',
+      });
+      errCnt = 0;
+    }
+    feeds.push(rec);
+  }
+  // posledni zaznam vzdy s diagnostikou (jako po odeslani)
+  const last = feeds[feeds.length - 1];
+  Object.assign(last, { field2: '-63', field3: '0', field4: String(errCnt), field5: '-104.2',
+                        field6: '75', status: 'FW 0.6.2 power-on samples 240 (demo)' });
+  return { channel: { id: 0, name: 'DEMO' }, feeds };
+}
+
+// --- ThingSpeak --------------------------------------------------------------
+
+function tsDate(ms) { return new Date(ms).toISOString().slice(0, 19).replace('T', ' '); }
+
+function tsUrl(channelId, key, startMs, endMs) {
+  const q = new URLSearchParams({
+    start: tsDate(startMs), end: tsDate(endMs), results: String(TS_MAX_RESULTS),
+    timezone: 'Etc/UTC', status: 'true',
+  });
+  if (key) q.set('api_key', key);
+  return `https://api.thingspeak.com/channels/${encodeURIComponent(channelId)}/feeds.json?${q}`;
+}
+
+// Nacte zaznamy v rozsahu; kdyz jich je 8000 (limit), pokracuje strankovanim do minulosti.
+// fetchFn je injektovatelny kvuli testu. Vraci {channel, feeds, pages}.
+async function tsFetchRange(channelId, key, startMs, endMs, fetchFn = fetch, maxPages = 30) {
+  const byId = new Map();
+  let channel = null, end = endMs, pages = 0;
+  while (pages < maxPages) {
+    pages++;
+    const r = await fetchFn(tsUrl(channelId, key, startMs, end));
+    if ((r.status === 400 || r.status === 401 || r.status === 403) && !key)
+      throw new Error(`Kanál není veřejný (HTTP ${r.status}) – zadejte Read API key v Nastavení.`);
+    if (r.status === 400 || r.status === 401 || r.status === 403)
+      throw new Error(`ThingSpeak odmítl požadavek (HTTP ${r.status}) – zkontrolujte ID kanálu a Read API key.`);
+    if (r.status === 404) throw new Error('Kanál nenalezen (HTTP 404).');
+    if (!r.ok) throw new Error(`ThingSpeak vrátil HTTP ${r.status}.`);
+    const j = await r.json();
+    if (j === -1 || !j || !Array.isArray(j.feeds)) throw new Error('Neplatná odpověď ThingSpeak (špatný klíč?).');
+    channel = channel || j.channel;
+    for (const f of j.feeds) byId.set(f.entry_id, f);
+    if (j.feeds.length < TS_MAX_RESULTS) break;
+    const oldest = Math.min(...j.feeds.map(f => Date.parse(f.created_at)));
+    if (!(oldest > startMs)) break;
+    end = oldest - 1000;
+  }
+  const feeds = [...byId.values()].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+  return { channel, feeds, pages };
+}
+// ==STATS-END==
+</script>
+
+<script>
+// --- UI (dve cidla v jednom kanalu, FW 2.7.0) -----------------------------------
+const LS = 'vt3.';               // prefix klicu v localStorage (oddelene od 'vt.' a 'vt2s.')
+const DEFAULT_CHANNEL = '3529108';
+const STALE_H = 10;              // varovani, kdyz posledni data jsou starsi (okna po 4 h + jedno vynechane)
+const SEND_INFO = '6× denně (okna po 4 h)';
+// Cidlo v kanalu i FW (ds_rom[i]) -> pole ThingSpeak.
+const SENSORS = [
+  { field: 'field1', name: 'Recirkulace', color: '--series-1' },
+  { field: 'field8', name: 'Měřák TUV',   color: '--series-2' },
+];
+// Duvody resetu z upload.cpp (resetName); bad = neocekavany restart.
+const RESETS = {
+  'power-on':     { text: 'zapnutí napájení' },
+  'deep-sleep':   { text: 'probuzení ze spánku' },
+  'ext-reset':    { text: 'tlačítko / vnější reset' },
+  'soft-restart': { text: 'softwarový restart' },
+  'hw-wdt':       { text: 'HW watchdog', bad: true },
+  'soft-wdt':     { text: 'SW watchdog', bad: true },
+  'exception':    { text: 'výjimka (pád FW)', bad: true },
+  'unknown':      { text: 'neznámý', bad: true },
+};
+
+const store = {
+  get(k, d = null) { try { const v = localStorage.getItem(LS + k); return v === null ? d : v; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(LS + k, v); } catch { /* napr. privatni okno */ } },
+  del(k) { try { localStorage.removeItem(LS + k); } catch { } },
+};
+
+const qs = new URLSearchParams(location.search);
+const state = {
+  range: store.get('range', '24h'),
+  demo: qs.has('demo') || store.get('demo', '0') === '1',
+  channel: qs.get('ch') ?? store.get('ch', DEFAULT_CHANNEL),   // ?ch= v adrese ma prednost
+  names: SENSORS.map((d, i) => store.get('name' + (i + 1), '')),
+  chName: '',         // nazev kanalu z ThingSpeak
+  parsed: null,       // {temps: [[...], [...]], diags, lastT}
+  err: '',
+  loadedAll: false,
+  loadedAt: null,
+};
+
+const $ = id => document.getElementById(id);
+const fmtDT = new Intl.DateTimeFormat('cs-CZ', { timeZone: TZ, day: 'numeric', month: 'numeric', hour: '2-digit', minute: '2-digit' });
+const fmtT = new Intl.DateTimeFormat('cs-CZ', { timeZone: TZ, hour: '2-digit', minute: '2-digit' });
+const dt = ms => ms == null ? '–' : fmtDT.format(new Date(ms));
+const temp = v => v == null ? '–' : v.toLocaleString('cs-CZ', { minimumFractionDigits: 1, maximumFractionDigits: 2 }) + ' °C';
+function ago(ms) {
+  const h = (Date.now() - ms) / HOUR_MS;
+  if (h < 1) return `před ${Math.max(0, Math.round(h * 60))} min`;
+  if (h < 48) return `před ${h.toFixed(1).replace('.', ',')} h`;
+  return `před ${Math.round(h / 24)} dny`;
+}
+const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const label = i => state.names[i] || SENSORS[i].name;
+
+function showErr(msg) { const b = $('bannerErr'); b.textContent = msg || ''; b.classList.toggle('show', !!msg); }
+
+// --- dekodovani --------------------------------------------------------------
+
+// Status z FW 2.7.0 (upload.cpp):
+//   "FW 2.7.0 <reset> samples N win W err E [batt-low] [extra] [id0 <ROM>] [id1 <ROM>]"
+// Starsi FW (2.2-2.6, Vodomer-teplomer) posila jen "FW x <reset> samples N" - chybejici casti = null.
+// Mezery muzou prijit i jako '+' (urlencoded).
+function decodeStatus(status) {
+  const s = (status || '').replace(/\+/g, ' ');
+  const m = /^FW (\S+)(?: (\S+))?/.exec(s);
+  const int = re => { const x = re.exec(s); return x ? Number(x[1]) : null; };
+  const ids = SENSORS.map(() => null);
+  for (const x of s.matchAll(/\bid(\d) ([0-9A-Fa-f]{16})\b/g)) {
+    const i = Number(x[1]);
+    if (i < ids.length) ids[i] = x[2].toUpperCase();
+  }
+  return {
+    status: status || null,
+    fw: m ? m[1] : null,
+    reset: m && m[2] && m[2] !== 'samples' ? m[2] : null,
+    nSamples: int(/\bsamples (\d+)/),
+    win: int(/\bwin (\d+)/),
+    err: int(/\berr (\d+)/),
+    battLow: /\bbatt-low\b/.test(s),
+    extra: /\bextra\b/.test(s),
+    ids,
+  };
+}
+
+// ThingSpeak feeds JSON -> {temps, diags, lastT}
+// temps[i]: vzorky cidla i (pole SENSORS[i].field), diags: zaznamy s diagnostikou.
+// Neuspesna okna a chybna mereni: ze statusu (2.7.0), jinak z field3/field4 (do 2.6.0).
+function parseFeeds27(json) {
+  const feeds = (json && Array.isArray(json.feeds)) ? json.feeds : [];
+  const temps = SENSORS.map(() => []), diags = [];
+  let lastT = null;
+  for (const f of feeds) {
+    const t = Date.parse(f.created_at);
+    if (!Number.isFinite(t)) continue;
+    if (lastT === null || t > lastT) lastT = t;
+    SENSORS.forEach((d, i) => { const v = num(f[d.field]); if (v !== null) temps[i].push({ t, v }); });
+    const st = decodeStatus(f.status);
+    const d = {
+      t, rssi: num(f.field2), drift: num(f.field5), battery: num(f.field6), vdd: num(f.field7), ...st,
+      failWin: st.win ?? num(f.field3), errCnt: st.err ?? num(f.field4),
+    };
+    if (d.rssi !== null || d.failWin !== null || d.errCnt !== null || d.drift !== null ||
+        d.battery !== null || d.vdd !== null || d.status) diags.push(d);
+  }
+  // duplicitni casove znacky (server je stejne zahodi) - nechat jen prvni
+  const uniq = a => a.sort((x, y) => x.t - y.t).filter((s, i) => i === 0 || s.t !== a[i - 1].t);
+  diags.sort((a, b) => a.t - b.t);
+  return { temps: temps.map(uniq), diags, lastT };
+}
+
+// Posledni znamy ROM kod cidla i: {rom, t, prev} (prev = predchozi jiny kod = vymena cidla) nebo null.
+function lastRom(diags, i) {
+  let cur = null;
+  for (let k = diags.length - 1; k >= 0; k--) {
+    const r = diags[k].ids[i];
+    if (!r) continue;
+    if (!cur) cur = { rom: r, t: diags[k].t, prev: null };
+    else if (r !== cur.rom) { cur.prev = { rom: r, t: diags[k].t }; break; }
+  }
+  return cur;
+}
+
+// --- nacitani dat ------------------------------------------------------------
+
+// Demo: field1 = puvodni demo, field8 = o 6 °C chladnejsi, status ve formatu 2.7.0.
+function demoJson(now, days) {
+  const j = genDemo(now, days, 42);
+  const rnd = mulberry32(7);
+  let n = 0;
+  for (const f of j.feeds) {
+    if (rnd() > 0.005) f.field8 = (Number(f.field1) - 6 + (rnd() - 0.5) * 0.4).toFixed(2);
+    if (!f.status) continue;
+    f.status = `FW 2.7.0 ${n++ === 0 ? 'power-on' : 'deep-sleep'} samples 240 win ${f.field3} err ${f.field4}` +
+      (n === 1 ? ' id0 28FF641E8328BD95 id1 28FF0A3C91160442' : '') + ' (demo)';
+    f.field3 = ''; f.field4 = ''; f.field7 = '3290';
+  }
+  j.channel = { id: 0, name: 'DEMO' };
+  return j;
+}
+
+async function load({ all = false } = {}) {
+  showErr('');
+  const now = Date.now();
+  const wantAll = all || state.range === 'all';
+  const from = wantAll ? Date.UTC(2020, 0, 1) : now - 7 * DAY_MS;
+  $('btnRefresh').disabled = true;
+  $('loadInfo').textContent = 'Načítání…';
+  state.err = ''; state.parsed = null; state.chName = '';
+  try {
+    if (!state.demo && !state.channel) throw new Error('Není zadaný kanál – doplňte ho v Nastavení.');
+    const json = state.demo ? demoJson(now, wantAll ? 30 : 10) : await tsFetchRange(state.channel, '', from, now);
+    state.parsed = parseFeeds27(json);
+    state.chName = (json.channel && json.channel.name) || '';
+  } catch (e) {
+    state.err = e && e.message ? e.message : String(e);
+  }
+  state.loadedAll = wantAll;
+  state.loadedAt = now;
+  $('btnRefresh').disabled = false;
+  showErr(state.err ? `Kanál ${state.channel}: ${state.err}` : '');
+  render();
+}
+
+// --- vykresleni --------------------------------------------------------------
+
+let chTemp = null;
+
+function viewWindow() {
+  const now = Date.now();
+  if (state.range === '24h') return { from: now - DAY_MS, to: now, label: '24 h' };
+  if (state.range === '7d') return { from: now - 7 * DAY_MS, to: now, label: '7 dní' };
+  const firsts = (state.parsed ? state.parsed.temps : []).map(a => a[0]?.t).filter(t => t != null);
+  return { from: firsts.length ? Math.min(...firsts) : now - 7 * DAY_MS, to: now, label: 'celé období' };
+}
+
+function render() {
+  const now = Date.now();
+  const w = viewWindow();
+  const p = state.parsed;
+
+  $('srcBadge').textContent = state.demo ? 'DEMO' : (state.channel || '–');
+  $('srcBadge').className = 'badge' + (state.demo ? ' demo' : '');
+  document.querySelectorAll('[data-range]').forEach(b => b.classList.toggle('on', b.dataset.range === state.range));
+  $('btnDemo').classList.toggle('on', state.demo);
+  $('loadInfo').textContent = (state.chName && !state.demo ? state.chName + ' · ' : '') +
+    SENSORS.map((d, i) => `${label(i)}: ${p ? p.temps[i].length : 0} vzorků`).join(' · ') +
+    (state.loadedAt ? ` · načteno ${fmtT.format(new Date(state.loadedAt))}` : '');
+
+  // varovani na stara data (kanal bez jakychkoli dat = jeste nebezi, nevarovat)
+  const lastT = p?.lastT;
+  const stale = lastT != null && now - lastT > STALE_H * HOUR_MS;
+  $('bannerStale').textContent = stale ? `Poslední data ${ago(lastT)} (${dt(lastT)}), běžně posílá ${SEND_INFO}.` : '';
+  $('bannerStale').classList.toggle('show', stale);
+
+  // souhrn
+  $('thMax').textContent = `Maximum (${w.label})`;
+  $('thMin').textContent = `Minimum (${w.label})`;
+  $('thAvg').textContent = `Průměr (${w.label})`;
+  const tb = $('sumBody');
+  tb.replaceChildren();
+  SENSORS.forEach((d, i) => {
+    const temps = p ? p.temps[i] : [];
+    const sm = summarize(inRange(temps, w.from, w.to));
+    const last = temps[temps.length - 1];
+    const tr = tb.insertRow();
+    const cell = (main, when, cls) => {
+      const td = tr.insertCell(); if (cls) td.className = cls;
+      td.append(document.createTextNode(main));
+      if (when) td.append(Object.assign(document.createElement('span'), { className: 'when', textContent: when }));
+      return td;
+    };
+    const tdName = cell(label(i), `kanál ${i}`);
+    tdName.prepend(Object.assign(document.createElement('i'), { className: 'sw', style: `background:${cssVar(d.color)}` }));
+    if (state.err) { cell('chyba načtení', '', 'muted'); tr.lastChild.colSpan = 4; }
+    else if (!last) { cell('zatím bez dat', '', 'muted'); tr.lastChild.colSpan = 4; }
+    else {
+      cell(temp(last.v), `${dt(last.t)} (${ago(last.t)})`, 'big');
+      cell(sm ? temp(sm.max.v) : '–', sm ? dt(sm.max.t) : 'bez dat');
+      cell(sm ? temp(sm.min.v) : '–', sm ? dt(sm.min.t) : '');
+      cell(sm ? temp(Math.round(sm.avg * 100) / 100) : '–', sm ? `z ${sm.n} vzorků` : '');
+    }
+    const rom = p ? lastRom(p.diags, i) : null;
+    cell(d.field, rom ? `${rom.rom} (${dt(rom.t)})` + (rom.prev ? ` · dříve ${rom.prev.rom}` : '')
+                      : 'ROM kód zatím nepřišel');
+  });
+
+  renderDiag();
+  renderHistory();
+  renderTempChart(w);
+  if ($('zoomOverlay').classList.contains('show')) renderZoomChart();
+}
+
+const resetText = r => r ? (RESETS[r] ? `${RESETS[r].text} (${r})` : r) : '–';
+const isBadReset = r => !!(r && (!RESETS[r] || RESETS[r].bad));
+
+// Blok "Posledni odeslani": diagnostika posledniho zaznamu s diagnostikou, status rozlozeny na casti.
+function renderDiag() {
+  const dl = $('diag');
+  dl.replaceChildren();
+  const red = cssVar('--err-border');
+  const add = (k, v, color) => {
+    const dd = Object.assign(document.createElement('dd'), { textContent: v });
+    if (color) dd.style.color = color;
+    dl.append(Object.assign(document.createElement('dt'), { textContent: k }), dd);
+  };
+  if (state.err) { add('Chyba', state.err, red); return; }
+  const p = state.parsed;
+  if (!p || p.lastT == null) { add('Stav', 'zatím žádná data'); return; }
+  add('Poslední záznam', `${dt(p.lastT)} (${ago(p.lastT)})`, Date.now() - p.lastT > STALE_H * HOUR_MS ? red : null);
+  const d = p.diags[p.diags.length - 1];
+  if (!d) { add('Diagnostika', 'za načtené období žádná'); return; }
+  add('Poslední odeslání', `${dt(d.t)} (${ago(d.t)})` + (d.extra ? ' – mimořádné (konec / průběh rychlého měření)' : ''));
+  add('FW', d.fw || '–');
+  add('Reset', resetText(d.reset), isBadReset(d.reset) ? red : null);
+  add('Vzorků v dávce', d.nSamples != null ? String(d.nSamples) : '–');
+  add('Neúspěšná okna', d.failWin != null ? String(d.failWin) : '–', d.failWin > 0 ? red : null);
+  add('Chybná měření', d.errCnt != null ? String(d.errCnt) : '–', d.errCnt > 0 ? red : null);
+  add('RSSI', d.rssi != null ? `${d.rssi} dBm` + (d.rssi < -80 ? ' (slabý signál)' : '') : '–');
+  add('Drift hodin', d.drift != null ? `${String(d.drift).replace('.', ',')} s/den` : '–');
+  const low = d.battLow || (d.battery != null && d.battery <= 25);
+  add('Baterie', (d.battery != null ? `${d.battery} %` : '–') + (d.battLow ? ' (batt-low, nabít)' : low ? ' (nabít)' : ''),
+      low ? red : null);
+  add('Napětí VDD', d.vdd != null ? `${d.vdd} mV` : '–');
+  SENSORS.forEach((s, i) => { if (d.ids[i]) add(`ROM kanál ${i}`, `${d.ids[i]} (${label(i)})`); });
+  add('Status', d.status || '–');
+}
+
+// Tabulka poslednich odeslani (nejnovejsi nahore).
+function renderHistory() {
+  const tb = $('histBody');
+  tb.replaceChildren();
+  const diags = state.parsed ? state.parsed.diags.slice(-60).reverse() : [];
+  if (!diags.length) {
+    const td = tb.insertRow().insertCell();
+    td.colSpan = 9; td.className = 'muted'; td.textContent = state.err ? 'chyba načtení' : 'žádná odeslání';
+    return;
+  }
+  const red = cssVar('--err-border');
+  for (const d of diags) {
+    const tr = tb.insertRow();
+    const cell = (v, color, title) => {
+      const td = tr.insertCell();
+      td.textContent = v == null || v === '' ? '–' : String(v);
+      if (color) td.style.color = color;
+      if (title) td.title = title;
+    };
+    const flags = [d.extra && 'extra', d.battLow && 'batt-low', d.ids.some(Boolean) && 'ROM'].filter(Boolean).join(' ');
+    cell(dt(d.t), null, d.status || '');
+    cell(d.fw);
+    cell(d.reset, isBadReset(d.reset) ? red : null, resetText(d.reset));
+    cell(d.nSamples);
+    cell(d.failWin, d.failWin > 0 ? red : null);
+    cell(d.errCnt, d.errCnt > 0 ? red : null);
+    cell(d.rssi);
+    cell(d.battery != null ? d.battery + ' %' : null, d.battLow ? red : null);
+    cell(flags, null, d.ids.filter(Boolean).join(' / '));
+  }
+}
+
+// Datasety teploty pro graf: jeden na cidlo s daty v [from, to].
+function tempDatasets(from, to, hitRadius) {
+  if (!state.parsed) return [];
+  return SENSORS.map((d, i) => {
+    const c = cssVar(d.color);
+    return {
+      label: label(i), data: insertGaps(inRange(state.parsed.temps[i], from, to)),
+      borderColor: c, backgroundColor: c, borderWidth: 2, pointRadius: 0, pointHitRadius: hitRadius,
+      spanGaps: false, tension: 0,
+    };
+  }).filter(ds => ds.data.length);
+}
+
+function chartOptions(w, unit) {
+  const grid = cssVar('--grid'), text2 = cssVar('--text2');
+  return {
+    responsive: true, maintainAspectRatio: false, animation: false, parsing: false, normalized: true,
+    interaction: { mode: 'nearest', axis: 'x', intersect: false },
+    scales: {
+      x: {
+        type: 'time', min: w.from, max: w.to,
+        adapters: { date: { zone: TZ, locale: 'cs' } },
+        time: { unit, tooltipFormat: 'd. M. yyyy HH:mm:ss', displayFormats: { minute: 'HH:mm', hour: 'HH:mm', day: 'd. M.' } },
+        grid: { color: grid }, ticks: { color: text2, maxRotation: 0, autoSkip: true },
+      },
+      y: { grid: { color: grid }, ticks: { color: text2, callback: v => v + ' °C' }, grace: '5%' },
+    },
+    plugins: {
+      legend: { labels: { color: text2, boxHeight: 2 } },
+      tooltip: { callbacks: { label: it => ` ${it.dataset.label}: ${temp(it.parsed.y)}` } },
+    },
+  };
+}
+
+function renderTempChart(w) {
+  $('chartTitle').textContent = `Teplota – ${w.label}`;
+  const unit = (w.to - w.from) <= 2 * DAY_MS ? 'hour' : 'day';
+  if (chTemp) chTemp.destroy();
+  chTemp = new Chart($('cTemp'), { type: 'line', data: { datasets: tempDatasets(w.from, w.to, 6) }, options: chartOptions(w, unit) });
+}
+
+// --- zvetseny graf s priblizenim (chartjs-plugin-zoom + hammer.js) ------------
+
+let chZoom = null;
+
+// Osa Y podle viditelneho vyrezu a viditelnych cidel (plugin pri zoomu osu Y neprepocita).
+function fitZoomY(chart) {
+  const sc = chart.scales.x;
+  let lo = Infinity, hi = -Infinity;
+  chart.data.datasets.forEach((ds, i) => {
+    if (!chart.isDatasetVisible(i)) return;
+    for (const p of ds.data) {
+      if (p.y == null || p.x < sc.min || p.x > sc.max) continue;
+      if (p.y < lo) lo = p.y;
+      if (p.y > hi) hi = p.y;
+    }
+  });
+  if (lo === Infinity) return;
+  const pad = Math.max(0.5, (hi - lo) * 0.08);
+  chart.options.scales.y.min = Math.floor((lo - pad) * 2) / 2;
+  chart.options.scales.y.max = Math.ceil((hi + pad) * 2) / 2;
+  chart.update('none');
+}
+
+function renderZoomChart() {
+  const w = viewWindow();
+  const firsts = state.parsed.temps.filter(a => a.length).map(a => a[0].t);
+  const minX = Math.min(w.from, ...firsts), maxX = Date.now();
+  $('zoomTitle').textContent = `Teplota – ${w.label}`;
+  const options = chartOptions(w, undefined);
+  delete options.scales.y.grace;
+  options.plugins.legend.onClick = (e, item, legend) => {
+    Chart.defaults.plugins.legend.onClick(e, item, legend);
+    fitZoomY(legend.chart);
+  };
+  options.plugins.zoom = {
+    limits: { x: { min: minX, max: maxX, minRange: 5 * 60 * 1000 } },   // 5 min - rychle mereni po 10 s
+    pan: { enabled: true, mode: 'x', onPanComplete: ({ chart }) => fitZoomY(chart) },
+    zoom: {
+      wheel: { enabled: true }, pinch: { enabled: true },
+      drag: { enabled: true, modifierKey: 'shift', backgroundColor: 'rgba(42,120,214,.2)' },
+      mode: 'x', onZoomComplete: ({ chart }) => fitZoomY(chart),
+    },
+  };
+  if (chZoom) chZoom.destroy();
+  chZoom = new Chart($('cZoom'), { type: 'line', data: { datasets: tempDatasets(-Infinity, Infinity, 8) }, options });
+  fitZoomY(chZoom);
+}
+
+function openZoom() {
+  if (!state.parsed || !state.parsed.temps.some(a => a.length)) return;
+  $('zoomOverlay').classList.add('show');
+  document.body.style.overflow = 'hidden';
+  renderZoomChart();
+}
+function closeZoom() {
+  $('zoomOverlay').classList.remove('show');
+  document.body.style.overflow = '';
+  if (chZoom) { chZoom.destroy(); chZoom = null; }
+}
+function zoomDefault() { if (chZoom) { chZoom.resetZoom('none'); fitZoomY(chZoom); } }
+function zoomAll() {
+  if (!chZoom) return;
+  const lim = chZoom.options.plugins.zoom.limits.x;
+  chZoom.zoomScale('x', { min: lim.min, max: lim.max }, 'none');
+  fitZoomY(chZoom);
+}
+
+// --- nastaveni ---------------------------------------------------------------
+
+function fillSettings(channel, names) {
+  $('inCh').value = channel;
+  names.forEach((n, i) => { $('inName' + (i + 1)).value = n; });
+}
+function openSettings() {
+  fillSettings(state.channel, state.names);
+  if (!$('dlg').open) $('dlg').showModal();
+}
+
+$('dlg').addEventListener('close', () => {
+  if ($('dlg').returnValue !== 'ok') return;
+  state.channel = $('inCh').value.trim();
+  store.set('ch', state.channel);
+  state.names = SENSORS.map((d, i) => $('inName' + (i + 1)).value.trim());
+  state.names.forEach((n, i) => store.set('name' + (i + 1), n));
+  state.demo = false; store.set('demo', '0');
+  load({ all: state.loadedAll });
+});
+$('btnCancel').addEventListener('click', () => $('dlg').close('cancel'));
+$('btnDefaults').addEventListener('click', () => fillSettings(DEFAULT_CHANNEL, SENSORS.map(() => '')));
+
+// --- ovladani ----------------------------------------------------------------
+
+document.querySelectorAll('[data-range]').forEach(b => b.addEventListener('click', () => {
+  state.range = b.dataset.range; store.set('range', state.range);
+  if (state.range === 'all' && !state.loadedAll) load(); else render();
+}));
+$('btnRefresh').addEventListener('click', () => load({ all: state.loadedAll }));
+$('btnDemo').addEventListener('click', () => {
+  state.demo = !state.demo; store.set('demo', state.demo ? '1' : '0');
+  state.loadedAll = false; load();
+});
+$('btnSettings').addEventListener('click', openSettings);
+$('tempBox').addEventListener('click', e => {
+  // klepnuti do legendy prepina cidlo, ne zvetseni
+  if (chTemp && e.offsetY < chTemp.legend.bottom) return;
+  openZoom();
+});
+$('btnZoomClose').addEventListener('click', closeZoom);
+$('btnZoomDefault').addEventListener('click', zoomDefault);
+$('btnZoomAll').addEventListener('click', zoomAll);
+$('cZoom').addEventListener('dblclick', zoomDefault);
+let tapT = 0, multiTouch = false;
+$('cZoom').addEventListener('touchstart', e => {
+  if (e.touches.length > 1) { multiTouch = true; return; }
+  const now = Date.now();
+  if (!multiTouch && now - tapT < 300) { zoomDefault(); tapT = 0; } else tapT = now;
+}, { passive: true });
+$('cZoom').addEventListener('touchend', e => { if (e.touches.length === 0) multiTouch = false; }, { passive: true });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('zoomOverlay').classList.contains('show')) closeZoom(); });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', render);
+
+if (typeof Chart === 'undefined') showErr('Nepodařilo se načíst knihovnu Chart.js z CDN (offline?).');
+else load();
+</script>
+</body>
+</html>

@@ -1,8 +1,10 @@
 # Vodomer-teplomer
 
-**📈 Měřicí stránka: https://barkingbunny.github.io/vodomer-teplomer/**
+**📈 Měřicí stránka (dvě čidla v jednom kanálu, FW 2.7.0): https://barkingbunny.github.io/vodomer-teplomer/treti/**
 
-**📈 Dva senzory v jednom grafu: https://barkingbunny.github.io/vodomer-teplomer/dva_senzory/**
+Starší stránky:
+- jedno čidlo (field1), práh a epizody: https://barkingbunny.github.io/vodomer-teplomer/
+- dva senzory ze dvou kanálů: https://barkingbunny.github.io/vodomer-teplomer/dva_senzory/
 
 Nízkoenergetický teploměr (DS18B20) na **M5Stack Basic** (ESP32), čisté
 **ESP-IDF 6.1**. Měří každé 2 min, spí v deep sleep, 3× denně (na USB každé
@@ -18,7 +20,15 @@ z prohlížeče, bez klíčů. Graf 24 h / 7 dní / vše, min/max/průměr, epiz
 prahem, stav zařízení (poslední odeslání, Wi-Fi, chyby, drift, baterie).
 Jiný kanál: `?ch=<id>`, demo data: `?demo`.
 
-Stránka [docs/dva_senzory/index.html](docs/dva_senzory/index.html) kreslí do
+Hlavní stránka [docs/treti/index.html](docs/treti/index.html) je pro FW 2.7.0
+teploměru ESP-WROOM-02 (projekt ESP-WROOM-02_temp_meas_v2): obě čidla jdou do jednoho
+kanálu, čidlo v kanálu 0 = field1, čidlo v kanálu 1 = field8. Graf obou čidel, souhrn
+s ROM kódy, poslední odeslání s rozloženým statusem (`FW … <reset> samples N win W err E
+[batt-low] [extra] [id0 <ROM>] [id1 <ROM>]`) a historie odeslání. Neúspěšná okna a chyby
+čte ze statusu, u starších záznamů (do 2.6.0) z field3/field4. CSS a blok STATS jsou
+kopie z `docs/index.html`. Jiný kanál: `?ch=<id>`, demo: `?demo`.
+
+Starší stránka [docs/dva_senzory/index.html](docs/dva_senzory/index.html) kreslí do
 jednoho grafu teplotu senzoru 1 (kanál 3529108) a senzoru 2 (kanál 3551603,
 deska 2 / `sdkconfig.board2`, posílá každých 60 s) se souhrnem max/min/průměr.
 CSS a blok STATS jsou kopie z `docs/index.html`, při změně je zkopírovat.
