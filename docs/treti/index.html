@@ -164,11 +164,28 @@
   .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .cols2 h2 .sw { margin-right: 6px; }
   /* legenda se zaskrtavatky (filtr car v grafu) */
-  .cklegend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 6px; font-size: .85rem; color: var(--text2); }
-  .cklegend label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
-  .cklegend input { margin: 0; accent-color: var(--accent); }
+  .cklegend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 0 8px; font-size: .85rem; color: var(--text2); }
+  .cklegend .cklbl { color: var(--muted); margin-right: 2px; }
+  /* polozka = "cip" se zaskrtavatkem v barve cary (--c) */
+  .cklegend label {
+    display: inline-flex; align-items: center; gap: 7px; cursor: pointer; user-select: none;
+    padding: 4px 11px 4px 7px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface);
+  }
+  .cklegend label:hover { border-color: var(--muted); }
+  .cklegend input {
+    appearance: none; -webkit-appearance: none; margin: 0; width: 16px; height: 16px; flex: none; cursor: pointer;
+    border: 2px solid var(--c); border-radius: 4px; background: transparent; display: grid; place-content: center;
+  }
+  .cklegend input:checked { background: var(--c); }
+  .cklegend input:checked::after {
+    content: ''; width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0;
+    transform: translateY(-1px) rotate(45deg);
+  }
+  .cklegend input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .cklegend .sw { margin-right: 0; }
-  .cklegend label:has(input:not(:checked)) { color: var(--muted); }
+  .cklegend label.off { color: var(--muted); border-style: dashed; }
+  .cklegend label.off .t { text-decoration: line-through; }
+  .cklegend label.off .sw { opacity: .3; }
   @media (max-width: 800px) { .chartbox.tall { height: 280px; } .cols2 { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -1018,10 +1035,15 @@ const isHidden = (group, key) => hiddenSet(group).has(key);
 // Zaskrtavatko pro kazdy dataset grafu do boxu boxId; onChange(chart) po prepnuti.
 function checkLegend(boxId, chart, group, onChange) {
   const box = $(boxId);
-  box.replaceChildren();
+  box.replaceChildren(Object.assign(document.createElement('span'), { className: 'cklbl', textContent: 'Zobrazit:' }));
   chart.data.datasets.forEach((ds, i) => {
     const cb = Object.assign(document.createElement('input'), { type: 'checkbox', checked: chart.isDatasetVisible(i) });
+    const lb = document.createElement('label');
+    lb.title = 'Klepnutím zobrazit / skrýt čáru v grafu';
+    lb.style.setProperty('--c', ds.borderColor);
+    lb.classList.toggle('off', !cb.checked);
     cb.addEventListener('change', () => {
+      lb.classList.toggle('off', !cb.checked);
       const set = hiddenSet(group);
       if (cb.checked) set.delete(ds.key); else set.add(ds.key);
       store.set('hide.' + group, JSON.stringify([...set]));
@@ -1032,8 +1054,7 @@ function checkLegend(boxId, chart, group, onChange) {
     const sw = Object.assign(document.createElement('i'), { className: 'sw' });
     sw.style.background = ds.borderDash
       ? `repeating-linear-gradient(90deg, ${ds.borderColor} 0 4px, transparent 4px 7px)` : ds.borderColor;
-    const lb = document.createElement('label');
-    lb.append(cb, sw, document.createTextNode(ds.label));
+    lb.append(cb, sw, Object.assign(document.createElement('span'), { className: 't', textContent: ds.label }));
     box.append(lb);
   });
 }
