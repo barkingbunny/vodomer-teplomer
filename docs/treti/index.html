@@ -7,8 +7,8 @@
 <!--
   Nastenka pro FW 2.7.0 (ESP-WROOM-02_temp_meas_v2): dve cidla DS18B20 v JEDNOM ThingSpeak kanalu.
   Cidlo v kanalu 0 -> field1, cidlo v kanalu 1 -> field8 (prazdne, kdyz chybi). Diagnostika jen
-  u posledniho zaznamu davky: field2 RSSI, field5 drift s/den, field6 baterie %, field7 VDD mV,
-  field3/field4 prazdne; status "FW 2.7.0 <reset> samples N win W err E [batt-low] [extra]
+  u posledniho zaznamu davky: field5 text "rssi <dBm> drift <s/den>" (od 2.7.x; drive field2 RSSI
+  a field5 cislo = drift - cte se obojí), field6 baterie %, field7 VDD mV, field2..4 prazdne; status "FW 2.7.0 <reset> samples N win W err E [batt-low] [extra]
   [id0 <ROM>] [id1 <ROM>]" (ROM kody jen po studenem startu a po zmene prirazeni cidel).
   Starsi zaznamy (do 2.6.0) maji okna a chyby ve field3/field4 - cte se obojí.
   - CSS a blok STATS (==STATS-BEGIN== / ==STATS-END==) jsou kopie z docs/index.html -
@@ -694,6 +694,15 @@ function decodeStatus(status) {
   };
 }
 
+// field5: od FW 2.7.x text "rssi <dBm> drift <s/den>" (field2 prazdne), drive jen cislo = drift.
+function decodeField5(v) {
+  const n = num(v);
+  if (n !== null || v == null || v === '') return { rssi: null, drift: n };
+  const s = String(v).replace(/\+/g, ' ');
+  const get = re => { const x = re.exec(s); return x ? num(x[1]) : null; };
+  return { rssi: get(/\brssi (-?\d+)/), drift: get(/\bdrift (-?[\d.]+)/) };
+}
+
 // ThingSpeak feeds JSON -> {temps, diags, lastT}
 // temps[i]: vzorky cidla i (pole SENSORS[i].field), diags: zaznamy s diagnostikou.
 // Neuspesna okna a chybna mereni: ze statusu (2.7.0), jinak z field3/field4 (do 2.6.0).
@@ -707,8 +716,9 @@ function parseFeeds27(json) {
     if (lastT === null || t > lastT) lastT = t;
     SENSORS.forEach((d, i) => { const v = num(f[d.field]); if (v !== null) temps[i].push({ t, v }); });
     const st = decodeStatus(f.status);
+    const f5 = decodeField5(f.field5);
     const d = {
-      t, rssi: num(f.field2), drift: num(f.field5), battery: num(f.field6), vdd: num(f.field7), ...st,
+      t, rssi: num(f.field2) ?? f5.rssi, drift: f5.drift, battery: num(f.field6), vdd: num(f.field7), ...st,
       failWin: st.win ?? num(f.field3), errCnt: st.err ?? num(f.field4),
     };
     if (d.rssi !== null || d.failWin !== null || d.errCnt !== null || d.drift !== null ||
