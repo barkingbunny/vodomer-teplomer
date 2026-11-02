@@ -163,6 +163,12 @@
   .chartbox.tall { height: 380px; }
   .cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .cols2 h2 .sw { margin-right: 6px; }
+  /* legenda se zaskrtavatky (filtr car v grafu) */
+  .cklegend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 6px; font-size: .85rem; color: var(--text2); }
+  .cklegend label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  .cklegend input { margin: 0; accent-color: var(--accent); }
+  .cklegend .sw { margin-right: 0; }
+  .cklegend label:has(input:not(:checked)) { color: var(--muted); }
   @media (max-width: 800px) { .chartbox.tall { height: 280px; } .cols2 { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -190,8 +196,9 @@
 
   <section class="card">
     <h2 id="chartTitle">Teplota</h2>
+    <div class="cklegend" id="lgTemp"></div>
     <div class="chartbox tall zoomable" id="tempBox" title="Klepnutím zvětšit"><canvas id="cTemp" aria-label="Graf teploty obou čidel v čase, klepnutím zvětšit"></canvas></div>
-    <div class="legendnote">Mezery v datech delší než 10 min nejsou spojené čárou. Klepnutím na graf ho zvětšíte a můžete přibližovat (kolečko myši / dva prsty). Klepnutím na položku legendy čidlo skryjete.</div>
+    <div class="legendnote">Mezery v datech delší než 10 min nejsou spojené čárou. Klepnutím na graf ho zvětšíte a můžete přibližovat (kolečko myši / dva prsty). Odškrtnutím v legendě čáru skryjete.</div>
   </section>
 
   <section class="card">
@@ -209,6 +216,7 @@
       <h2>Poslední odeslání</h2>
       <dl class="diag" id="diag"><dt>–</dt><dd></dd></dl>
       <div id="vddBox" hidden>
+        <div class="cklegend" id="lgVdd"></div>
         <div class="chartbox small"><canvas id="cVdd" aria-label="Napětí VDD a baterie v čase"></canvas></div>
         <div class="legendnote">VDD = napájení modulu za regulátorem, měřené před každým odesláním. Dokud baterie stačí, drží se u 3,3 V; pokles znamená, že baterie dochází. Baterie [%] je rezerva odvozená z VDD, ne kapacita.</div>
       </div>
@@ -239,6 +247,7 @@
       <button id="btnZoomClose" class="primary">Zavřít</button>
     </div>
   </div>
+  <div class="cklegend" id="lgZoom"></div>
   <div class="chartbox"><canvas id="cZoom" aria-label="Zvětšený graf teploty s přiblížením"></canvas></div>
 </div>
 
@@ -884,12 +893,12 @@ function renderVdd() {
     type: 'line',
     data: {
       datasets: [
-        { label: 'VDD [mV]', data: vdd, borderColor: c1, backgroundColor: c1, borderWidth: 2, pointRadius: 3, yAxisID: 'y', tension: 0 },
-        { label: 'Baterie [%]', data: bat, borderColor: c2, backgroundColor: c2, borderWidth: 1, borderDash: [5, 4], pointRadius: 2, yAxisID: 'y2', tension: 0 },
+        { key: 'vdd', label: 'VDD [mV]', data: vdd, borderColor: c1, backgroundColor: c1, borderWidth: 2, pointRadius: 3, yAxisID: 'y', tension: 0 },
+        { key: 'bat', label: 'Baterie [%]', data: bat, borderColor: c2, backgroundColor: c2, borderWidth: 1, borderDash: [5, 4], pointRadius: 2, yAxisID: 'y2', tension: 0 },
         // kriticky prah FW (VDD_CRIT_MV): pod nim deska neposila
-        { label: 'Kritický práh 3000 mV', data: vdd.length ? [{ x: vdd[0].x, y: 3000 }, { x: vdd[vdd.length - 1].x, y: 3000 }] : [],
+        { key: 'thr', label: 'Kritický práh 3000 mV', data: vdd.length ? [{ x: vdd[0].x, y: 3000 }, { x: vdd[vdd.length - 1].x, y: 3000 }] : [],
           borderColor: cssVar('--hot'), borderDash: [3, 3], borderWidth: 1, pointRadius: 0, pointHitRadius: 0, yAxisID: 'y' },
-      ],
+      ].map(ds => ({ ...ds, hidden: isHidden('vdd', ds.key) })),
     },
     options: {
       responsive: true, maintainAspectRatio: false, animation: false, parsing: false,
@@ -903,12 +912,13 @@ function renderVdd() {
         y2: { position: 'right', min: 0, max: 100, grid: { drawOnChartArea: false }, ticks: { color: text2, callback: v => v + ' %' } },
       },
       plugins: {
-        legend: { labels: { color: text2, boxHeight: 2 } },
+        legend: { display: false },   // zaskrtavatka nad grafem (checkLegend)
         tooltip: { filter: it => it.datasetIndex < 2,
                    callbacks: { label: it => ` ${it.dataset.label.split(' ')[0]}: ${it.parsed.y}${it.dataset.yAxisID === 'y' ? ' mV' : ' %'}` } },
       },
     },
   });
+  checkLegend('lgVdd', chVdd, 'vdd');
   if (!vdd.length) {
     const ctx = $('cVdd').getContext('2d');
     ctx.save(); ctx.fillStyle = text2; ctx.font = '14px system-ui, sans-serif'; ctx.textAlign = 'center';
@@ -955,9 +965,9 @@ function tempDatasets(from, to, hitRadius) {
   return SENSORS.map((d, i) => {
     const c = cssVar(d.color);
     return {
-      label: label(i), data: insertGaps(inRange(state.parsed.temps[i], from, to)),
+      key: d.field, label: label(i), data: insertGaps(inRange(state.parsed.temps[i], from, to)),
       borderColor: c, backgroundColor: c, borderWidth: 2, pointRadius: 0, pointHitRadius: hitRadius,
-      spanGaps: false, tension: 0,
+      spanGaps: false, tension: 0, hidden: isHidden('temp', d.field),
     };
   }).filter(ds => ds.data.length);
 }
@@ -977,7 +987,7 @@ function chartOptions(w, unit) {
       y: { grid: { color: grid }, ticks: { color: text2, callback: v => v + ' °C' }, grace: '5%' },
     },
     plugins: {
-      legend: { labels: { color: text2, boxHeight: 2 } },
+      legend: { display: false },   // zaskrtavatka nad grafem (checkLegend)
       tooltip: { callbacks: { label: it => ` ${it.dataset.label}: ${temp(it.parsed.y)}` } },
     },
   };
@@ -988,6 +998,44 @@ function renderTempChart(w) {
   const unit = (w.to - w.from) <= 2 * DAY_MS ? 'hour' : 'day';
   if (chTemp) chTemp.destroy();
   chTemp = new Chart($('cTemp'), { type: 'line', data: { datasets: tempDatasets(w.from, w.to, 6) }, options: chartOptions(w, unit) });
+  checkLegend('lgTemp', chTemp, 'temp');
+}
+
+// --- legenda se zaskrtavatky (filtr car v grafu) -----------------------------
+// Skryte rady podle skupiny ('temp' = maly i zvetseny graf teploty, 'vdd'), klic = ds.key;
+// pamatuji se v prohlizeci, takze vydrzi prekresleni i nove nacteni.
+const hiddenSets = {};
+function hiddenSet(group) {
+  if (!hiddenSets[group]) {
+    let a = [];
+    try { a = JSON.parse(store.get('hide.' + group, '[]')); } catch { }
+    hiddenSets[group] = new Set(Array.isArray(a) ? a : []);
+  }
+  return hiddenSets[group];
+}
+const isHidden = (group, key) => hiddenSet(group).has(key);
+
+// Zaskrtavatko pro kazdy dataset grafu do boxu boxId; onChange(chart) po prepnuti.
+function checkLegend(boxId, chart, group, onChange) {
+  const box = $(boxId);
+  box.replaceChildren();
+  chart.data.datasets.forEach((ds, i) => {
+    const cb = Object.assign(document.createElement('input'), { type: 'checkbox', checked: chart.isDatasetVisible(i) });
+    cb.addEventListener('change', () => {
+      const set = hiddenSet(group);
+      if (cb.checked) set.delete(ds.key); else set.add(ds.key);
+      store.set('hide.' + group, JSON.stringify([...set]));
+      chart.setDatasetVisibility(i, cb.checked);
+      chart.update('none');
+      if (onChange) onChange(chart);
+    });
+    const sw = Object.assign(document.createElement('i'), { className: 'sw' });
+    sw.style.background = ds.borderDash
+      ? `repeating-linear-gradient(90deg, ${ds.borderColor} 0 4px, transparent 4px 7px)` : ds.borderColor;
+    const lb = document.createElement('label');
+    lb.append(cb, sw, document.createTextNode(ds.label));
+    box.append(lb);
+  });
 }
 
 // --- zvetseny graf s priblizenim (chartjs-plugin-zoom + hammer.js) ------------
@@ -1020,10 +1068,6 @@ function renderZoomChart() {
   $('zoomTitle').textContent = `Teplota – ${w.label}`;
   const options = chartOptions(w, undefined);
   delete options.scales.y.grace;
-  options.plugins.legend.onClick = (e, item, legend) => {
-    Chart.defaults.plugins.legend.onClick(e, item, legend);
-    fitZoomY(legend.chart);
-  };
   options.plugins.zoom = {
     limits: { x: { min: minX, max: maxX, minRange: 5 * 60 * 1000 } },   // 5 min - rychle mereni po 10 s
     pan: { enabled: true, mode: 'x', onPanComplete: ({ chart }) => fitZoomY(chart) },
@@ -1035,6 +1079,7 @@ function renderZoomChart() {
   };
   if (chZoom) chZoom.destroy();
   chZoom = new Chart($('cZoom'), { type: 'line', data: { datasets: tempDatasets(-Infinity, Infinity, 8) }, options });
+  checkLegend('lgZoom', chZoom, 'temp', fitZoomY);
   fitZoomY(chZoom);
 }
 
@@ -1092,11 +1137,7 @@ $('btnDemo').addEventListener('click', () => {
   state.loadedAll = false; load();
 });
 $('btnSettings').addEventListener('click', openSettings);
-$('tempBox').addEventListener('click', e => {
-  // klepnuti do legendy prepina cidlo, ne zvetseni
-  if (chTemp && e.offsetY < chTemp.legend.bottom) return;
-  openZoom();
-});
+$('tempBox').addEventListener('click', openZoom);   // legenda je mimo graf (zaskrtavatka)
 $('btnZoomClose').addEventListener('click', closeZoom);
 $('btnZoomDefault').addEventListener('click', zoomDefault);
 $('btnZoomAll').addEventListener('click', zoomAll);
