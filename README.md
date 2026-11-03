@@ -1,10 +1,8 @@
 # Vodomer-teplomer
 
-**📈 Měřicí stránka (dvě čidla v jednom kanálu, FW 2.7.0): https://barkingbunny.github.io/vodomer-teplomer/treti/**
+**📈 Měřicí stránka (dvě čidla v jednom kanálu, FW 2.7): https://barkingbunny.github.io/vodomer-teplomer/treti/**
 
-Starší stránky:
-- jedno čidlo (field1), práh a epizody: https://barkingbunny.github.io/vodomer-teplomer/
-- dva senzory ze dvou kanálů: https://barkingbunny.github.io/vodomer-teplomer/dva_senzory/
+Starší stránka (jedno čidlo, field1, práh a epizody): https://barkingbunny.github.io/vodomer-teplomer/
 
 Nízkoenergetický teploměr (DS18B20) na **M5Stack Basic** (ESP32), čisté
 **ESP-IDF 6.1**. Měří každé 2 min, spí v deep sleep, 3× denně (na USB každé
@@ -28,11 +26,8 @@ s ROM kódy, poslední odeslání s rozloženým statusem (`FW … <reset> sampl
 čte ze statusu, u starších záznamů (do 2.6.0) z field3/field4. CSS a blok STATS jsou
 kopie z `docs/index.html`. Jiný kanál: `?ch=<id>`, demo: `?demo`.
 
-Starší stránka [docs/dva_senzory/index.html](docs/dva_senzory/index.html) kreslí do
-jednoho grafu teplotu senzoru 1 (kanál 3529108) a senzoru 2 (kanál 3551603,
-deska 2 / `sdkconfig.board2`, posílá každých 60 s) se souhrnem max/min/průměr.
-CSS a blok STATS jsou kopie z `docs/index.html`, při změně je zkopírovat.
-Jiné kanály: `?ch1=<id>&ch2=<id>`, demo: `?demo`.
+Stránka `docs/dva_senzory/` (dva kanály 3529108 + 3551603 v jednom grafu) byla
+3. 11. 2026 zrušena: druhé čidlo posílá do kanálu 3529108 (field8), viz `treti/`.
 
 - Zadání a decision log: [zadani.md](zadani.md) · HW a zapojení: [hw.md](hw.md)
   · poznámky z testů: [poznamky.md](poznamky.md) · odložené nápady: [optional.md](optional.md)
