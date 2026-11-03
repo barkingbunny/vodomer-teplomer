@@ -613,10 +613,11 @@ const LS = 'vt3.';               // prefix klicu v localStorage (oddelene od 'vt
 const DEFAULT_CHANNEL = '3529108';
 const STALE_H = 10;              // varovani, kdyz posledni data jsou starsi (okna po 4 h + jedno vynechane)
 const SEND_INFO = '6× denně (okna po 4 h)';
-// Cidlo v kanalu i FW (ds_rom[i]) -> pole ThingSpeak.
+// Cidlo v kanalu i FW (ds_rom[i]) -> pole ThingSpeak. from = starsi hodnoty pole se ignoruji
+// (field8 byvalo "doba cerpani vody" - 23. 10. 2026 v nem jsou hodnoty 1 a 2; TUV od 26. 10.).
 const SENSORS = [
   { field: 'field1', name: 'Recirkulace', color: '--series-1' },
-  { field: 'field8', name: 'Měřák TUV',   color: '--series-2' },
+  { field: 'field8', name: 'Měřák TUV',   color: '--series-2', from: Date.parse('2026-10-26T00:00:00Z') },
 ];
 // Duvody resetu z upload.cpp (resetName); bad = neocekavany restart.
 const RESETS = {
@@ -714,7 +715,10 @@ function parseFeeds27(json) {
     const t = Date.parse(f.created_at);
     if (!Number.isFinite(t)) continue;
     if (lastT === null || t > lastT) lastT = t;
-    SENSORS.forEach((d, i) => { const v = num(f[d.field]); if (v !== null) temps[i].push({ t, v }); });
+    SENSORS.forEach((d, i) => {
+      const v = num(f[d.field]);
+      if (v !== null && !(t < d.from)) temps[i].push({ t, v });
+    });
     const st = decodeStatus(f.status);
     const f5 = decodeField5(f.field5);
     const d = {
